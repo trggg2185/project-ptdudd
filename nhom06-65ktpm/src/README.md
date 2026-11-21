@@ -2,7 +2,7 @@
 
 ## Bắt đầu tại đây — dành cho thành viên và AI của thành viên
 
-**Đây là khung dự án cùng cấu hình dùng chung, chưa có chức năng HealthyLife.** `lib/main.dart` chỉ hiển thị Hello World. Không có bootstrap Firebase/Supabase, màn hình đăng nhập, database schema, RLS, bucket ảnh hay nghiệp vụ được triển khai trong lần chuẩn bị này. Các phần đó do từng người thực hiện theo issue, không làm thay nhau.
+**Đây là khung dự án cùng cấu hình dùng chung, chưa có chức năng HealthyLife.** `lib/main.dart` chỉ hiển thị Hello World. Chưa có bootstrap Firebase/Supabase, màn hình đăng nhập hoặc nghiệp vụ. Migration schema/RLS/Storage và seed hiện có trong `supabase/`, nhưng chưa được áp dụng hoặc kiểm chứng trên project cloud. Các phần còn lại do từng người thực hiện theo issue, không làm thay nhau.
 
 AI đọc [AGENTS.md](AGENTS.md) trước khi sửa mã, rồi đọc issue được giao và các phần liên quan trong README. Các mục 1–11 bên dưới là **đặc tả/kế hoạch**, không phải danh sách tính năng đã hoàn thành.
 
@@ -97,7 +97,7 @@ Nếu chưa có keystore, tạo bằng quy trình build debug của Flutter/Andr
 
 **Claim Supabase:** Firebase JWT cần claim `role: authenticated`. Third-party integration đơn thuần chưa đủ cho chính sách dành cho role authenticated. Nhóm trưởng dùng Firebase Admin SDK trong môi trường quản trị tin cậy để cấp claim cho tài khoản thử nghiệm và giữ các custom claims khác. Khi hoàn thiện đăng ký, quyết định cơ chế tự cấp claim phía server cho tài khoản mới; không tự bật billing/deploy Functions khi nhóm chưa thống nhất. Không tự cấp claim từ Flutter, không sửa JWT, không dùng service_role trên client. Sau khi claim được cấp, refresh token với `getIdToken(true)` rồi thử lại; nếu cấp bất đồng bộ chưa xong thì chờ xác nhận server, không mặc định refresh một lần là đủ.
 
-**Hà — issue #7:** schema/migration, RLS và Storage policies còn phải viết, review và áp dụng vào đúng project. Firebase UID **là chuỗi**, nên owner_uid/user_uid dùng TEXT; RLS so với `auth.jwt()->>'sub'`, không ép sang UUID bằng `auth.uid()`. Mọi thao tác đọc/ghi phải có chính sách phù hợp, UPDATE kiểm tra cả dữ liệu cũ lẫn dữ liệu mới; Storage bảo vệ ảnh riêng tư. Không mở policy cho mọi người hoặc tắt RLS để cho app chạy. Chưa tạo bucket/schema trong lần cấu hình chung này.
+**Hà — issue #7:** migration ban đầu đã được viết trong `supabase/migrations/`; cần review, áp dụng và kiểm thử trên đúng project. Firebase UID **là chuỗi**, nên owner_uid/user_uid dùng TEXT; RLS so với `auth.jwt()->>'sub'`, không ép sang UUID bằng `auth.uid()`. Policies kiểm tra chủ sở hữu; kiểm soát xung đột phiên bản, SQLite và sync queue vẫn cần triển khai. Không mở policy cho mọi người hoặc tắt RLS để cho app chạy. Chưa xác nhận schema/bucket đã được deploy.
 
 **Kiểm chứng đã làm:** một tài khoản Firebase tạm đăng ký và đăng nhập thành công bằng Email/Password. Sau khi cấp claim `role: authenticated` và đăng nhập lại, JWT của tài khoản đến được Supabase Data API. Yêu cầu đọc tên bảng thử chưa tồn tại nhận `PGRST205` và JWT có chữ ký sai nhận `401 PGRST301`. Tài khoản thử đã được xóa và phép thử không tạo bảng. Đây là phép thử cấu hình xác thực ở API.
 
@@ -144,7 +144,7 @@ Chưa push, mở/merge PR hoặc deploy cloud cho đến khi tôi yêu cầu.
 - Google sign-in lỗi trên Android: kiểm tra provider, SHA của máy, Android ID và OAuth client; không tự đổi package hoặc dùng keystore người khác.
 - Web đăng nhập báo unauthorized-domain: nhóm trưởng kiểm tra authorized domains; không sửa sang Firebase project khác.
 - Supabase 401/403/RLS denied: kiểm tra publishable key/URL, Firebase JWT/claim, third-party integration và policies với Trưởng/Hà. Truy cập chưa được phép phải bị từ chối, không phải lỗi cần chữa bằng cách mở dữ liệu.
-- Chưa có bảng hoặc bucket: đó là phần issue #7 cần triển khai, không phải lý do tự tạo schema riêng trên project khác.
+- Nếu bảng hoặc bucket chưa có trên cloud: kiểm tra trạng thái migration của issue #7 với nhóm; không tự tạo schema riêng trên project khác.
 - iOS/Windows/macOS/Linux: chưa có FirebaseOptions cho các bản native này; ưu tiên Android/Web theo phạm vi đã chốt.
 - Xung đột main.dart, pubspec hoặc migration: trao đổi người phụ trách, giữ thay đổi của nhau; không chọn “accept all ours” hoặc “accept all theirs” mà chưa đọc.
 
@@ -440,8 +440,8 @@ src/
 ├── test/                       # Unit/widget tests sẽ bổ sung khi có logic
 ├── integration_test/           # Luồng chính, quyền thiết bị và sync
 ├── supabase/
-│   ├── migrations/             # Chưa có schema/policies
-│   ├── seed/                   # Danh mục mẫu có nguồn sẽ biên soạn sau
+│   ├── migrations/             # Schema, RLS và Storage policies; chưa xác nhận deploy
+│   ├── seed/                   # Seed danh mục môn tập và món ăn
 │   └── functions/              # Tác vụ server khi cần triển khai
 ├── pubspec.yaml
 ├── pubspec.lock                # Phiên bản dependencies dùng chung

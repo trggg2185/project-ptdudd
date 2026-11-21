@@ -200,12 +200,12 @@ Dùng A, B và C: A có dữ liệu, B có dữ liệu độc lập, C thử tru
 
 Mỗi thành viên chịu trách nhiệm cả triển khai, kiểm thử và tài liệu module phụ trách; review chéo trước merge. Tỷ lệ đóng góp, email và lớp sinh hoạt chờ nhóm xác nhận, không mặc định chia đều khi chưa có minh chứng.
 
-| Họ và tên | Module phụ trách | Công việc phối hợp | Sản phẩm nghiệm thu |
-| --- | --- | --- | --- |
-| Nguyễn Thế Trưởng — 2351170626 | Nhóm trưởng; auth, profile, planner | Kiến trúc, tích hợp Firebase–Supabase, review và PR | Hồ sơ, lịch không xung đột/ca đêm, bản tích hợp và test planner |
-| Phương Văn Đức — 2351170585 | habits, sleep, notifications | UI/UX responsive, streak và nhắc lịch cục bộ | CRUD thói quen, nhật ký ngủ, nhắc không trùng, test múi giờ/streak |
-| Hàn Hoàng Hà — 2051063882 | activity; Database/Storage, sync | GPS, SQLite, RLS, xóa dữ liệu; hỗ trợ schema toàn nhóm | Phiên GPS và fallback, migration/policies, đồng bộ retry và test ba tài khoản |
-| Nguyễn Đăng Đại — 2351170578 | nutrition, recommendations, insights | Camera, danh mục món/môn tập, tổng hợp kiểm thử/báo cáo | Nhật ký ảnh, gợi ý lọc dị ứng/thiết bị, dashboard, báo cáo và demo |
+| Họ và tên                      | Module phụ trách                     | Công việc phối hợp                                      | Sản phẩm nghiệm thu                                                           |
+| ------------------------------ | ------------------------------------ | ------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Nguyễn Thế Trưởng — 2351170626 | Nhóm trưởng; auth, profile, planner  | Kiến trúc, tích hợp Firebase–Supabase, review và PR     | Hồ sơ, lịch không xung đột/ca đêm, bản tích hợp và test planner               |
+| Phương Văn Đức — 2351170585    | habits, sleep, notifications         | UI/UX responsive, streak và nhắc lịch cục bộ            | CRUD thói quen, nhật ký ngủ, nhắc không trùng, test múi giờ/streak            |
+| Hàn Hoàng Hà — 2051063882      | activity; Database/Storage, sync     | GPS, SQLite, RLS, xóa dữ liệu; hỗ trợ schema toàn nhóm  | Phiên GPS và fallback, migration/policies, đồng bộ retry và test ba tài khoản |
+| Nguyễn Đăng Đại — 2351170578   | nutrition, recommendations, insights | Camera, danh mục món/môn tập, tổng hợp kiểm thử/báo cáo | Nhật ký ảnh, gợi ý lọc dị ứng/thiết bị, dashboard, báo cáo và demo            |
 
 ### 9.1. Kế hoạch sáu tuần từ khi nhóm chốt đề cương
 
@@ -245,7 +245,6 @@ Rủi ro chính: JWT/RLS, độ tin cậy nhắc trên thiết bị, GPS/pin, đ
 HealthyLife nâng cấp bài kỷ luật cá nhân thành hệ thống hỗ trợ xây dựng lịch sống lành mạnh theo điều kiện người dùng. Đề cương kết hợp các chức năng cốt lõi khả thi, dữ liệu cloud, lưu cục bộ, camera và GPS, đồng thời tách rõ tính năng mở rộng để bảo đảm tiến độ.
 
 Giá trị của đề tài nằm ở khả năng đưa gợi ý vào lịch thực tế, giải thích lựa chọn, ghi nhận tiến độ và bảo vệ dữ liệu. Hiệu quả cải thiện sức khỏe chưa được kiểm chứng và không phải cam kết nghiệm thu; nhóm sẽ đánh giá tính đúng đắn chức năng, khả năng sử dụng và sự nhất quán của dữ liệu.
-
 
 ## Cấu trúc dự án và môi trường
 
@@ -315,7 +314,6 @@ Hiện lệnh chạy chỉ mở khung mặc định. Khi có logic mới bổ su
 Không commit service-role key, private key, service account, `.env` hay dữ liệu sức khỏe thật. Khóa bí mật chỉ ở server. Commit `pubspec.lock` của ứng dụng; không commit cache/build hoặc file nhị phân APK/IPA.
 
 ## Git theo quy định của giảng viên
-
 
 Nguồn quy định: [README ngoài cùng](../../README.md). Tất cả lệnh Git bên dưới chạy từ **thư mục gốc repository**; nếu đang ở `src`, chạy `cd ../..` trước.
 
@@ -408,7 +406,6 @@ git push origin nhom06-65ktpm
 3. Tiêu đề: `[Nộp bài] nhom06-65ktpm - HealthyLife - Trợ lý kỷ luật và lối sống lành mạnh`.
 4. Nội dung nêu chức năng thực sự hoàn thành, cách chạy, kết quả kiểm thử và bốn thành viên. Kiểm tra Files changed chỉ có đường dẫn nhóm mình.
 5. Giảng viên kiểm duyệt và merge PR về `main`; nhóm chỉ cập nhật nhánh nhóm khi được yêu cầu sửa.
-
 
 ## Tài liệu và nguồn tham khảo
 

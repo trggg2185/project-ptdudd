@@ -254,6 +254,77 @@ void main() {
       expect(statusT3, equals(HabitDayStatus.restDay));
     });
 
+    test('Pause and resume with pauseHistory preserves streak upon resumption (P1 Finding)', () {
+      final t2 = baseMonday; // Mon: complete
+      final t3 = baseMonday.add(const Duration(days: 1)); // Tue: pause starts
+      final t5 = baseMonday.add(const Duration(days: 3)); // Thu: pause ends / resumed
+
+      // Hoàn thành T2 (1 ngày) và T5 (ngày tiếp tục lại thói quen)
+      final logs = [
+        HabitLog(id: 'l1', habitId: 'h-resume', userId: userId, date: t2, status: CheckInStatus.completed),
+        HabitLog(id: 'l2', habitId: 'h-resume', userId: userId, date: t5, status: CheckInStatus.completed),
+      ];
+
+      // Thói quen từng tạm dừng từ T3 đến T5 (sau đó resumedAt = T5)
+      final resumedHabit = Habit(
+        id: 'h-resume',
+        ownerUid: userId,
+        name: 'Đọc sách tạm dừng rồi tiếp tục',
+        frequency: const HabitFrequency.daily(),
+        createdAt: t2,
+        isActive: true,
+        pausedAt: null, // Đã tiếp tục nên pausedAt = null
+        pauseHistory: [
+          PauseInterval(pausedAt: t3, resumedAt: t5),
+        ],
+      );
+
+      // Tính streak tại thời điểm T5:
+      // Các ngày T3, T4 nằm trong khoảng tạm dừng nên được đóng băng,
+      // không bị coi là thiếu dữ liệu làm đứt chuỗi.
+      // Khi T5 hoàn thành, streak tăng tiếp từ 1 lên 2!
+      final streakAtT5 = StreakCalculator.calculate(resumedHabit, logs, referenceDate: t5);
+      expect(streakAtT5.currentStreak, equals(2));
+      expect(streakAtT5.longestStreak, equals(2));
+      expect(streakAtT5.totalCompletions, equals(2));
+      expect(streakAtT5.totalDueDays, equals(2)); // T2 và T5 (T3, T4 được miễn)
+    });
+
+    test('Future date with anomalous log from backend still returns future status (P2 Finding)', () {
+      final habit = Habit(
+        id: 'h-future-anomaly',
+        ownerUid: userId,
+        name: 'Chạy bộ',
+        frequency: const HabitFrequency.daily(),
+        createdAt: baseMonday,
+      );
+
+      final today = baseMonday;
+      final tomorrow = baseMonday.add(const Duration(days: 1));
+
+      // Giả sử backend hoặc mạng đồng bộ một log completed cho ngày mai (tương lai)
+      final anomalousLogs = [
+        HabitLog(
+          id: 'log-future-anomaly',
+          habitId: 'h-future-anomaly',
+          userId: userId,
+          date: tomorrow,
+          status: CheckInStatus.completed,
+        ),
+      ];
+
+      // Kiểm tra trạng thái ngày mai (referenceDate = today):
+      // Phải trả về future ("Chưa đến hạn"), KHÔNG được trả về completed ("Đã xong")!
+      final statusTomorrow = StreakCalculator.getDayStatus(
+        habit,
+        anomalousLogs,
+        tomorrow,
+        referenceDate: today,
+      );
+
+      expect(statusTomorrow, equals(HabitDayStatus.future));
+    });
+
     test('Deduplication: multiple logs on same date takes latest log without double counting', () {
       final habit = Habit(
         id: 'h6',

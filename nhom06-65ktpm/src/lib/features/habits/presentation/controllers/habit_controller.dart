@@ -223,16 +223,42 @@ class HabitController extends ChangeNotifier {
   }
 
   /// Bật/tắt kích hoạt thói quen (tạm dừng / tiếp tục).
-  /// Cập nhật `pausedAt` để đóng băng streak khi tạm dừng (P2 Finding).
+  /// Lưu danh sách các khoảng tạm dừng (`pauseHistory`) để bảo toàn chuỗi streak khi tiếp tục lại (P1 Finding).
   Future<void> toggleActive(String habitId) async {
     try {
       final habit = _habits.firstWhere((h) => h.id == habitId);
       final newActiveState = !habit.isActive;
       final now = DateTime.now();
 
+      final newHistory = List<PauseInterval>.from(habit.pauseHistory);
+      DateTime? newPausedAt;
+
+      if (!newActiveState) {
+        // Chuyển sang tạm dừng: mở khoảng tạm dừng mới
+        newPausedAt = now;
+        newHistory.add(PauseInterval(pausedAt: now));
+      } else {
+        // Tiếp tục thói quen: đóng khoảng tạm dừng gần nhất với resumedAt = now
+        newPausedAt = null;
+        if (newHistory.isNotEmpty && newHistory.last.resumedAt == null) {
+          final last = newHistory.removeLast();
+          newHistory.add(PauseInterval(
+            pausedAt: last.pausedAt,
+            resumedAt: now,
+          ));
+        } else if (habit.pausedAt != null) {
+          newHistory.add(PauseInterval(
+            pausedAt: habit.pausedAt!,
+            resumedAt: now,
+          ));
+        }
+      }
+
       final updated = habit.copyWith(
         isActive: newActiveState,
-        pausedAt: newActiveState ? null : now,
+        pausedAt: newPausedAt,
+        clearPausedAt: newActiveState,
+        pauseHistory: newHistory,
       );
 
       await repository.saveHabit(updated);

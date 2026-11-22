@@ -67,14 +67,11 @@ class StreakCalculator {
     // 3. Duyệt tuần tự từng ngày từ `startDate` đến `ref`.
     var cursor = startDate;
     while (!cursor.isAfter(ref)) {
-      // Kiểm tra khoảng thời gian tạm dừng:
-      // Nếu thói quen đã tạm dừng trước hoặc vào ngày cursor, đóng băng streak (không tính ngày đến hạn)
-      final isPaused = !habit.isActive &&
-          habit.pausedAt != null &&
-          !cursor.isBefore(DateHelper.normalize(habit.pausedAt!));
+      // Kiểm tra khoảng thời gian tạm dừng (dựa vào pauseHistory hoặc pausedAt):
+      final isPaused = habit.isPausedOn(cursor);
 
       if (isPaused) {
-        // Ngày trong khoảng tạm dừng: không sinh ngày đến hạn, giữ nguyên streak hiện tại
+        // Ngày trong khoảng tạm dừng: không sinh ngày đến hạn, đóng băng chuỗi (freeze streak)
         cursor = cursor.add(const Duration(days: 1));
         continue;
       }
@@ -155,7 +152,26 @@ class StreakCalculator {
     final normTarget = DateHelper.normalize(targetDate);
     final ref = DateHelper.normalize(referenceDate ?? DateTime.now());
 
-    // 1. Tìm log hợp lệ trong ngày đó
+    // 1. Kiểm tra ngày trong tương lai TRƯỚC HẾT (Fix [P2] Finding):
+    // Tuyệt đối không để log tương lai (do dữ liệu bất thường hoặc lệch múi giờ) hiển thị là "completed".
+    if (DateHelper.isFutureDay(normTarget, ref)) {
+      if (habit.isPausedOn(normTarget)) {
+        return HabitDayStatus.restDay;
+      }
+      final effectiveFreq = habit.getFrequencyOn(normTarget);
+      final isDue = effectiveFreq.isDueOn(normTarget);
+      if (!isDue) {
+        return HabitDayStatus.restDay;
+      }
+      return HabitDayStatus.future;
+    }
+
+    // 2. Nếu thói quen đang trong giai đoạn tạm dừng tại thời điểm targetDate:
+    if (habit.isPausedOn(normTarget)) {
+      return HabitDayStatus.restDay;
+    }
+
+    // 3. Tìm log hợp lệ trong ngày đó (quá khứ hoặc hôm nay):
     HabitLog? dayLog;
     for (final log in logs) {
       if (log.habitId == habit.id && DateHelper.isSameDay(log.date, normTarget)) {
@@ -176,29 +192,19 @@ class StreakCalculator {
       }
     }
 
-    // 2. Nếu thói quen đang trong giai đoạn tạm dừng tại thời điểm targetDate
-    if (!habit.isActive &&
-        habit.pausedAt != null &&
-        !normTarget.isBefore(DateHelper.normalize(habit.pausedAt!))) {
-      return HabitDayStatus.restDay;
-    }
-
-    // 3. Kiểm tra chu kỳ có hiệu lực tại thời điểm targetDate (ngày nghỉ thì luôn là restDay)
+    // 4. Kiểm tra chu kỳ có hiệu lực tại thời điểm targetDate (ngày nghỉ thì là restDay):
     final effectiveFreq = habit.getFrequencyOn(normTarget);
     final isDue = effectiveFreq.isDueOn(normTarget);
     if (!isDue) {
       return HabitDayStatus.restDay;
     }
 
-    // 4. Nếu là ngày đến hạn trong tương lai
-    if (DateHelper.isFutureDay(normTarget, ref)) {
-      return HabitDayStatus.future;
-    }
-
+    // 5. Ngày trong quá khứ đã đến hạn nhưng không có log check-in:
     if (normTarget.isBefore(ref)) {
       return HabitDayStatus.missed;
     }
 
+    // 6. Hôm nay chưa check-in:
     return HabitDayStatus.pending;
   }
 

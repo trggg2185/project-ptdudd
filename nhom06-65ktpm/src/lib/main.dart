@@ -1,15 +1,36 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'features/habits/data/repositories/in_memory_habit_repository.dart';
 import 'features/habits/data/repositories/supabase_habit_repository.dart';
 import 'features/habits/domain/repositories/habit_repository.dart';
 import 'features/habits/presentation/pages/habits_page.dart';
 
+/// Khởi tạo và phân giải repository phù hợp:
+/// - Khi Supabase đã được cấu hình và khởi tạo (`isInitialized == true`):
+///   kết nối trực tiếp với backend qua `SupabaseHabitRepository`.
+/// - Khi chạy độc lập hoặc offline (chưa khởi tạo Supabase):
+///   tự động kích hoạt `InMemoryHabitRepository(seedWithSamples: true)` ở chế độ **Demo ngoại tuyến (In-Memory)**.
+///   (Lưu ý: Ở chế độ demo offline này, dữ liệu chỉ lưu trên RAM và không được bảo lưu khi restart app).
+HabitRepository resolveHabitRepository({HabitRepository? customRepository}) {
+  if (customRepository != null) return customRepository;
+
+  try {
+    if (Supabase.instance.isInitialized) {
+      return SupabaseHabitRepository();
+    }
+  } catch (_) {
+    // Supabase chưa được khởi tạo
+  }
+
+  return InMemoryHabitRepository(seedWithSamples: true);
+}
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Khởi tạo repository mặc định với dữ liệu mẫu phong phú phục vụ kiểm thử và chạy độc lập
-  final HabitRepository repository = InMemoryHabitRepository(seedWithSamples: true);
+  // Khởi tạo repository theo cấu hình môi trường
+  final repository = resolveHabitRepository();
 
   runApp(HealthyLifeApp(habitRepository: repository));
 }
@@ -22,11 +43,7 @@ class HealthyLifeApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Ưu tiên repository được truyền vào, fallback Supabase (nếu có) hoặc InMemory có dữ liệu mẫu
-    final repo = habitRepository ??
-        (SupabaseHabitRepository().toString().isNotEmpty
-            ? InMemoryHabitRepository(seedWithSamples: true)
-            : InMemoryHabitRepository(seedWithSamples: true));
+    final repo = resolveHabitRepository(customRepository: habitRepository);
 
     return MaterialApp(
       title: 'HealthyLife - Trợ lý kỷ luật',

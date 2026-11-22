@@ -40,6 +40,72 @@ class FrequencySchedule {
   int get hashCode => Object.hash(frequency, effectiveFrom.year, effectiveFrom.month, effectiveFrom.day);
 }
 
+/// Khoảng thời gian thói quen bị tạm dừng (từ [pausedAt] đến [resumedAt]).
+///
+/// Phục vụ yêu cầu: Tạm dừng rồi tiếp tục lại vẫn bảo toàn lịch sử chuỗi streak (P1 Finding).
+/// Các ngày trong khoảng tạm dừng này không sinh ngày đến hạn và không phá vỡ streak.
+class PauseInterval {
+  final DateTime pausedAt;
+  final DateTime? resumedAt;
+
+  const PauseInterval({
+    required this.pausedAt,
+    this.resumedAt,
+  });
+
+  /// Kiểm tra ngày [date] có rơi vào khoảng thời gian tạm dừng này hay không.
+  bool contains(DateTime date) {
+    final norm = DateHelper.normalize(date);
+    final start = DateHelper.normalize(pausedAt);
+    if (norm.isBefore(start)) return false;
+
+    if (resumedAt == null) {
+      // Đang tạm dừng chưa tiếp tục
+      return true;
+    }
+    final end = DateHelper.normalize(resumedAt!);
+    // Ngày trước ngày tiếp tục vẫn thuộc khoảng tạm dừng
+    return norm.isBefore(end);
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'pausedAt': DateHelper.formatIsoDate(pausedAt),
+      if (resumedAt != null) 'resumedAt': DateHelper.formatIsoDate(resumedAt!),
+    };
+  }
+
+  factory PauseInterval.fromJson(Map<String, dynamic> json) {
+    return PauseInterval(
+      pausedAt: DateTime.parse(json['pausedAt'] as String),
+      resumedAt: json['resumedAt'] != null
+          ? DateTime.parse(json['resumedAt'] as String)
+          : null,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is PauseInterval &&
+        DateHelper.isSameDay(other.pausedAt, pausedAt) &&
+        ((other.resumedAt == null && resumedAt == null) ||
+            (other.resumedAt != null &&
+                resumedAt != null &&
+                DateHelper.isSameDay(other.resumedAt!, resumedAt!)));
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        pausedAt.year,
+        pausedAt.month,
+        pausedAt.day,
+        resumedAt?.year,
+        resumedAt?.month,
+        resumedAt?.day,
+      );
+}
+
 /// Thực thể đại diện cho một thói quen rèn luyện kỷ luật cá nhân của người dùng.
 class Habit {
   /// Định danh duy nhất (UUID v4).
@@ -60,13 +126,16 @@ class Habit {
   /// Lịch sử các phiên bản chu kỳ lặp kèm ngày áp dụng.
   final List<FrequencySchedule> frequencyHistory;
 
+  /// Lịch sử các khoảng thời gian tạm dừng thói quen (pausedAt -> resumedAt).
+  final List<PauseInterval> pauseHistory;
+
   /// Giờ nhắc nhở trong ngày (định dạng "HH:mm", ví dụ: "07:00").
   final String? reminderTime;
 
   /// Trạng thái kích hoạt (true = đang thực hiện, false = tạm dừng).
   final bool isActive;
 
-  /// Thời điểm bắt đầu tạm dừng (nếu isActive = false).
+  /// Thời điểm bắt đầu tạm dừng hiện tại (nếu isActive = false).
   final DateTime? pausedAt;
 
   /// Thời điểm tạo thói quen.
@@ -85,6 +154,7 @@ class Habit {
     this.description,
     this.frequency = const HabitFrequency.daily(),
     List<FrequencySchedule>? frequencyHistory,
+    List<PauseInterval>? pauseHistory,
     this.reminderTime,
     this.isActive = true,
     this.pausedAt,
@@ -98,7 +168,22 @@ class Habit {
             frequency: frequency,
             effectiveFrom: createdAt ?? DateTime.now(),
           ),
-        ];
+        ],
+        pauseHistory = pauseHistory ?? const [];
+
+  /// Kiểm tra xem thói quen có đang trong trạng thái tạm dừng vào ngày [date] hay không.
+  bool isPausedOn(DateTime date) {
+    for (final interval in pauseHistory) {
+      if (interval.contains(date)) return true;
+    }
+    // Tương thích ngược: nếu habit đang !isActive và có pausedAt
+    if (!isActive && pausedAt != null) {
+      final normDate = DateHelper.normalize(date);
+      final normPaused = DateHelper.normalize(pausedAt!);
+      if (!normDate.isBefore(normPaused)) return true;
+    }
+    return false;
+  }
 
   /// Lấy chu kỳ lặp có hiệu lực tại ngày [date].
   ///
@@ -131,9 +216,11 @@ class Habit {
     String? description,
     HabitFrequency? frequency,
     List<FrequencySchedule>? frequencyHistory,
+    List<PauseInterval>? pauseHistory,
     String? reminderTime,
     bool? isActive,
     DateTime? pausedAt,
+    bool clearPausedAt = false,
     DateTime? createdAt,
     DateTime? updatedAt,
     int? version,
@@ -145,9 +232,10 @@ class Habit {
       description: description ?? this.description,
       frequency: frequency ?? this.frequency,
       frequencyHistory: frequencyHistory ?? this.frequencyHistory,
+      pauseHistory: pauseHistory ?? this.pauseHistory,
       reminderTime: reminderTime ?? this.reminderTime,
       isActive: isActive ?? this.isActive,
-      pausedAt: pausedAt ?? this.pausedAt,
+      pausedAt: clearPausedAt ? null : (pausedAt ?? this.pausedAt),
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       version: version ?? this.version,
@@ -162,6 +250,7 @@ class Habit {
       'description': description,
       'frequency': frequency.toJson(),
       'frequencyHistory': frequencyHistory.map((e) => e.toJson()).toList(),
+      'pauseHistory': pauseHistory.map((e) => e.toJson()).toList(),
       'reminderTime': reminderTime,
       'isActive': isActive,
       'pausedAt': pausedAt?.toIso8601String(),
@@ -184,6 +273,14 @@ class Habit {
           .toList();
     }
 
+    List<PauseInterval>? pauses;
+    if (json['pauseHistory'] != null) {
+      final rawList = json['pauseHistory'] as List<dynamic>;
+      pauses = rawList
+          .map((e) => PauseInterval.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList();
+    }
+
     return Habit(
       id: json['id'] as String,
       ownerUid: json['ownerUid'] as String? ?? '',
@@ -191,6 +288,7 @@ class Habit {
       description: json['description'] as String?,
       frequency: freq,
       frequencyHistory: history,
+      pauseHistory: pauses,
       reminderTime: json['reminderTime'] as String?,
       isActive: json['isActive'] as bool? ?? true,
       pausedAt: json['pausedAt'] != null ? DateTime.parse(json['pausedAt'] as String) : null,
@@ -209,6 +307,7 @@ class Habit {
     final recurrenceMap = {
       'frequency': frequency.toJson(),
       'frequencyHistory': frequencyHistory.map((e) => e.toJson()).toList(),
+      'pauseHistory': pauseHistory.map((e) => e.toJson()).toList(),
       if (reminderTime != null) 'reminderTime': reminderTime,
       if (pausedAt != null) 'pausedAt': pausedAt!.toIso8601String(),
     };
@@ -229,6 +328,7 @@ class Habit {
   factory Habit.fromSupabaseMap(Map<String, dynamic> map) {
     HabitFrequency freq = const HabitFrequency.daily();
     List<FrequencySchedule>? history;
+    List<PauseInterval>? pauses;
     String? reminder;
     DateTime? paused;
 
@@ -248,6 +348,12 @@ class Habit {
                 .map((e) => FrequencySchedule.fromJson(Map<String, dynamic>.from(e as Map)))
                 .toList();
           }
+          if (decoded.containsKey('pauseHistory')) {
+            final rawList = decoded['pauseHistory'] as List<dynamic>;
+            pauses = rawList
+                .map((e) => PauseInterval.fromJson(Map<String, dynamic>.from(e as Map)))
+                .toList();
+          }
           reminder = decoded['reminderTime'] as String?;
           if (decoded['pausedAt'] != null) {
             paused = DateTime.parse(decoded['pausedAt'] as String);
@@ -265,6 +371,7 @@ class Habit {
       description: map['description'] as String?,
       frequency: freq,
       frequencyHistory: history,
+      pauseHistory: pauses,
       reminderTime: reminder,
       isActive: map['is_active'] as bool? ?? true,
       pausedAt: paused,

@@ -100,6 +100,37 @@ void main() {
       expect(controller.selectedDateLogs['h-ctrl-1'], isNull);
     });
 
+    test('HabitController records pauseHistory when pausing and resuming (P1 Finding)', () async {
+      final controller = HabitController(repository: repository, currentUserId: userId);
+      final habit = Habit(id: 'h-pause-ctrl', ownerUid: userId, name: 'Tập yoga');
+      await controller.createHabit(habit);
+
+      // 1. Tạm dừng thói quen:
+      await controller.toggleActive('h-pause-ctrl');
+      final pausedHabit = controller.habits.firstWhere((h) => h.id == 'h-pause-ctrl');
+      expect(pausedHabit.isActive, isFalse);
+      expect(pausedHabit.pausedAt, isNotNull);
+      expect(pausedHabit.pauseHistory.length, equals(1));
+      expect(pausedHabit.pauseHistory.first.resumedAt, isNull);
+
+      // 2. Tiếp tục lại thói quen:
+      await controller.toggleActive('h-pause-ctrl');
+      final resumedHabit = controller.habits.firstWhere((h) => h.id == 'h-pause-ctrl');
+      expect(resumedHabit.isActive, isTrue);
+      expect(resumedHabit.pausedAt, isNull);
+      expect(resumedHabit.pauseHistory.length, equals(1));
+      expect(resumedHabit.pauseHistory.first.resumedAt, isNotNull);
+    });
+
+    test('resolveHabitRepository falls back to InMemory demo repository offline (P1 Finding)', () {
+      final repo = resolveHabitRepository();
+      expect(repo, isA<InMemoryHabitRepository>());
+
+      final custom = InMemoryHabitRepository(seedWithSamples: false);
+      final customResolved = resolveHabitRepository(customRepository: custom);
+      expect(identical(customResolved, custom), isTrue);
+    });
+
     testWidgets('HabitFormPage validates required habit name', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(

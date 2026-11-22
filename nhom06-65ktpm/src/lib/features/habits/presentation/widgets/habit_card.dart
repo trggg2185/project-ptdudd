@@ -89,9 +89,16 @@ class HabitCard extends StatelessWidget {
                                   color: Colors.grey.shade200,
                                   borderRadius: BorderRadius.circular(6),
                                 ),
-                                child: const Text(
-                                  'Tạm dừng',
-                                  style: TextStyle(fontSize: 10, color: Colors.grey),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.pause, size: 10, color: Colors.grey),
+                                    SizedBox(width: 2),
+                                    Text(
+                                      'Tạm dừng (đóng băng streak)',
+                                      style: TextStyle(fontSize: 10, color: Colors.grey),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
@@ -155,9 +162,11 @@ class HabitCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            Icons.local_fire_department,
+            !habit.isActive ? Icons.pause_circle_outline : Icons.local_fire_department,
             size: 16,
-            color: streakInfo.currentStreak > 0 ? Colors.deepOrange : Colors.grey,
+            color: streakInfo.currentStreak > 0
+                ? (!habit.isActive ? Colors.grey : Colors.deepOrange)
+                : Colors.grey,
           ),
           const SizedBox(width: 3),
           Text(
@@ -165,7 +174,9 @@ class HabitCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.bold,
-              color: streakInfo.currentStreak > 0 ? Colors.deepOrange : Colors.grey.shade700,
+              color: streakInfo.currentStreak > 0
+                  ? (!habit.isActive ? Colors.grey.shade700 : Colors.deepOrange)
+                  : Colors.grey.shade700,
             ),
           ),
         ],
@@ -225,6 +236,44 @@ class HabitCard extends StatelessWidget {
   }
 
   Widget _buildActionWidget(BuildContext context) {
+    // 1. Ngày tương lai: Chặn ghi nhận check-in/bỏ qua, chỉ hiển thị trạng thái chưa đến hạn
+    if (dayStatus == HabitDayStatus.future) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.schedule, size: 14, color: Colors.grey),
+            SizedBox(width: 4),
+            Text(
+              'Chưa đến hạn',
+              style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 2. Thói quen đang tạm dừng
+    if (!habit.isActive) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: const Text(
+          'Đang tạm dừng',
+          style: TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+      );
+    }
+
     switch (dayStatus) {
       case HabitDayStatus.completed:
         return InkWell(
@@ -319,6 +368,9 @@ class HabitCard extends StatelessWidget {
 
       case HabitDayStatus.pending:
         return _buildCheckInButtons(context);
+
+      case HabitDayStatus.future:
+        return const SizedBox.shrink();
     }
   }
 

@@ -13,8 +13,12 @@ import '../entities/streak_info.dart';
 /// 3. Bỏ qua có lý do hợp lệ (`skipped`) KHÔNG phá vỡ streak hiện tại.
 /// 4. Ngày đến hạn trong quá khứ không có log hoặc bị đánh dấu `failed` sẽ phá vỡ streak hiện tại về 0.
 /// 5. Ngày hôm nay (`referenceDate`) chưa check-in không phá vỡ streak hôm qua (vẫn đang trong ngày).
-/// 6. Mỗi ngày địa phương chỉ tính một kết quả duy nhất (loại bỏ trùng lặp).
-/// 7. Sửa chu kỳ trong tương lai không làm thay đổi lịch sử các ngày đã ghi nhận.
+/// 6. Ngày trong tương lai KHÔNG được ghi nhận check-in hoặc tính vào streak.
+/// 7. Mỗi ngày địa phương chỉ tính một kết quả duy nhất (loại bỏ trùng lặp).
+/// 8. Sửa chu kỳ trong tương lai không làm thay đổi lịch sử các ngày đã ghi nhận
+///    (sử dụng `habit.getFrequencyOn(date)` theo từng mốc áp dụng).
+/// 9. Tạm dừng thói quen (`!habit.isActive` / `habit.pausedAt`) sẽ đóng băng chuỗi (freeze streak),
+///    không phát sinh ngày đến hạn trong khoảng thời gian tạm dừng và không tính là vi phạm.
 class StreakCalculator {
   /// Tính toán thông tin `StreakInfo` cho thói quen [habit] dựa trên danh sách nhật ký [logs].
   ///
@@ -30,6 +34,9 @@ class StreakCalculator {
     final Map<String, HabitLog> uniqueLogsMap = {};
     for (final log in logs) {
       if (log.habitId != habit.id) continue;
+      // Bỏ qua các log nếu có ai cố tình ghi vào ngày tương lai
+      if (DateHelper.isFutureDay(log.date, ref)) continue;
+
       final key = DateHelper.formatIsoDate(log.date);
       final existing = uniqueLogsMap[key];
       if (existing == null || log.loggedAt.isAfter(existing.loggedAt)) {
@@ -38,7 +45,6 @@ class StreakCalculator {
     }
 
     // 2. Xác định ngày bắt đầu tính toán:
-    // Mặc định từ ngày tạo thói quen hoặc ngày có log sớm nhất.
     DateTime startDate = DateHelper.normalize(habit.createdAt);
     for (final log in uniqueLogsMap.values) {
       if (log.date.isBefore(startDate)) {
@@ -61,7 +67,21 @@ class StreakCalculator {
     // 3. Duyệt tuần tự từng ngày từ `startDate` đến `ref`.
     var cursor = startDate;
     while (!cursor.isAfter(ref)) {
-      final isDue = habit.frequency.isDueOn(cursor);
+      // Kiểm tra khoảng thời gian tạm dừng:
+      // Nếu thói quen đã tạm dừng trước hoặc vào ngày cursor, đóng băng streak (không tính ngày đến hạn)
+      final isPaused = !habit.isActive &&
+          habit.pausedAt != null &&
+          !cursor.isBefore(DateHelper.normalize(habit.pausedAt!));
+
+      if (isPaused) {
+        // Ngày trong khoảng tạm dừng: không sinh ngày đến hạn, giữ nguyên streak hiện tại
+        cursor = cursor.add(const Duration(days: 1));
+        continue;
+      }
+
+      // Lấy chu kỳ có hiệu lực tại thời điểm cursor (đảm bảo không sửa lịch sử)
+      final effectiveFreq = habit.getFrequencyOn(cursor);
+      final isDue = effectiveFreq.isDueOn(cursor);
       final dateKey = DateHelper.formatIsoDate(cursor);
       final log = uniqueLogsMap[dateKey];
       final isToday = DateHelper.isSameDay(cursor, ref);
@@ -135,7 +155,7 @@ class StreakCalculator {
     final normTarget = DateHelper.normalize(targetDate);
     final ref = DateHelper.normalize(referenceDate ?? DateTime.now());
 
-    // Tìm log hợp lệ trong ngày đó
+    // 1. Tìm log hợp lệ trong ngày đó
     HabitLog? dayLog;
     for (final log in logs) {
       if (log.habitId == habit.id && DateHelper.isSameDay(log.date, normTarget)) {
@@ -156,10 +176,23 @@ class StreakCalculator {
       }
     }
 
-    // Không có log:
-    final isDue = habit.frequency.isDueOn(normTarget);
+    // 2. Nếu thói quen đang trong giai đoạn tạm dừng tại thời điểm targetDate
+    if (!habit.isActive &&
+        habit.pausedAt != null &&
+        !normTarget.isBefore(DateHelper.normalize(habit.pausedAt!))) {
+      return HabitDayStatus.restDay;
+    }
+
+    // 3. Kiểm tra chu kỳ có hiệu lực tại thời điểm targetDate (ngày nghỉ thì luôn là restDay)
+    final effectiveFreq = habit.getFrequencyOn(normTarget);
+    final isDue = effectiveFreq.isDueOn(normTarget);
     if (!isDue) {
       return HabitDayStatus.restDay;
+    }
+
+    // 4. Nếu là ngày đến hạn trong tương lai
+    if (DateHelper.isFutureDay(normTarget, ref)) {
+      return HabitDayStatus.future;
     }
 
     if (normTarget.isBefore(ref)) {

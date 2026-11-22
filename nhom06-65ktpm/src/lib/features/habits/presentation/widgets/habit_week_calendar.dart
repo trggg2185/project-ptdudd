@@ -52,7 +52,7 @@ class HabitWeekCalendar extends StatelessWidget {
                     const SizedBox(width: 8),
                     _legendItem(Colors.red.shade400, 'Lỡ'),
                     const SizedBox(width: 8),
-                    _legendItem(Colors.grey.shade400, 'Nghỉ'),
+                    _legendItem(Colors.grey.shade400, 'Nghỉ/Chờ'),
                   ],
                 ),
               ],
@@ -145,6 +145,10 @@ class HabitWeekCalendar extends StatelessWidget {
         bg = Colors.grey.shade300;
         icon = Icons.hourglass_empty;
         break;
+      case HabitDayStatus.future:
+        bg = Colors.grey.shade200;
+        icon = Icons.schedule;
+        break;
       case HabitDayStatus.restDay:
         bg = Colors.grey.shade200;
         icon = null;
@@ -162,7 +166,9 @@ class HabitWeekCalendar extends StatelessWidget {
           ? Icon(
               icon,
               size: 13,
-              color: status == HabitDayStatus.pending ? Colors.black54 : Colors.white,
+              color: (status == HabitDayStatus.pending || status == HabitDayStatus.future)
+                  ? Colors.black54
+                  : Colors.white,
             )
           : null,
     );

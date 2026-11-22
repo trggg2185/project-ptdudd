@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:healthylife/core/utils/date_helper.dart';
 import 'package:healthylife/features/habits/data/repositories/in_memory_habit_repository.dart';
+import 'package:healthylife/features/habits/data/repositories/supabase_habit_repository.dart';
 import 'package:healthylife/features/habits/domain/entities/habit.dart';
 import 'package:healthylife/features/habits/domain/entities/habit_frequency.dart';
 import 'package:healthylife/features/habits/domain/entities/habit_log.dart';
@@ -171,6 +172,12 @@ void main() {
       expect(streak.currentStreak, equals(3));
       expect(streak.longestStreak, equals(3));
       expect(streak.completionPercentage, equals(100.0));
+    });
+
+    test('HabitSyncException formats error message clearly without swallowing (P1 Finding)', () {
+      final ex = HabitSyncException('Lỗi mạng kết nối Supabase', cause: 'SocketException: Failed host lookup');
+      expect(ex.message, contains('Lỗi mạng kết nối Supabase'));
+      expect(ex.toString(), contains('SocketException: Failed host lookup'));
     });
   });
 }

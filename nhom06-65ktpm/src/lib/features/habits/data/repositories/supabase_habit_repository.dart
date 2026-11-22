@@ -8,10 +8,22 @@ import '../../domain/logic/streak_calculator.dart';
 import '../../domain/repositories/habit_repository.dart';
 import 'in_memory_habit_repository.dart';
 
+/// Ngoại lệ ném ra khi thao tác đồng bộ với Supabase thất bại.
+/// Không nuốt lỗi ngầm để controller và UI xử lý thông báo trung thực cho người dùng.
+class HabitSyncException implements Exception {
+  final String message;
+  final Object? cause;
+
+  HabitSyncException(this.message, {this.cause});
+
+  @override
+  String toString() => 'HabitSyncException: $message ${cause != null ? '($cause)' : ''}';
+}
+
 /// Triển khai `HabitRepository` kết nối cơ sở dữ liệu Supabase theo đúng schema
 /// đã định nghĩa trong file migration `20261121_000001_initial_healthy_life_schema.sql`.
 ///
-/// Tự động fallback sang cache/in-memory nếu Supabase chưa được khởi tạo hoặc mất mạng.
+/// Báo lỗi rõ ràng qua `HabitSyncException` khi ghi/đồng bộ Supabase thất bại.
 class SupabaseHabitRepository implements HabitRepository {
   final SupabaseClient? _client;
   final InMemoryHabitRepository _fallbackRepo = InMemoryHabitRepository(seedWithSamples: false);
@@ -43,8 +55,8 @@ class SupabaseHabitRepository implements HabitRepository {
         await _fallbackRepo.saveHabit(h);
       }
       return list;
-    } catch (_) {
-      return _fallbackRepo.getHabits(ownerUid: ownerUid, activeOnly: activeOnly);
+    } catch (e) {
+      throw HabitSyncException('Không thể tải danh sách thói quen từ Supabase: $e', cause: e);
     }
   }
 
@@ -60,44 +72,55 @@ class SupabaseHabitRepository implements HabitRepository {
       final habit = Habit.fromSupabaseMap(response);
       await _fallbackRepo.saveHabit(habit);
       return habit;
-    } catch (_) {
-      return _fallbackRepo.getHabitById(id);
+    } catch (e) {
+      throw HabitSyncException('Không thể tải thói quen $id từ Supabase: $e', cause: e);
     }
   }
 
   @override
   Future<void> saveHabit(Habit habit) async {
-    await _fallbackRepo.saveHabit(habit);
-    if (!_isOnline) return;
-
-    try {
-      await _client!.from('habits').upsert(habit.toSupabaseMap());
-    } catch (_) {
-      // Lưu ở local để đồng bộ sau (sync queue)
+    if (_isOnline) {
+      try {
+        await _client!.from('habits').upsert(habit.toSupabaseMap());
+        await _fallbackRepo.saveHabit(habit);
+      } catch (e) {
+        throw HabitSyncException('Không thể lưu thói quen "${habit.name}" lên Supabase: $e', cause: e);
+      }
+    } else {
+      await _fallbackRepo.saveHabit(habit);
     }
   }
 
   @override
   Future<void> deleteHabit(String id) async {
-    await _fallbackRepo.deleteHabit(id);
-    if (!_isOnline) return;
-
-    try {
-      await _client!.from('habits').delete().eq('id', id);
-    } catch (_) {}
+    if (_isOnline) {
+      try {
+        await _client!.from('habits').delete().eq('id', id);
+        await _fallbackRepo.deleteHabit(id);
+      } catch (e) {
+        throw HabitSyncException('Không thể xóa thói quen trên Supabase: $e', cause: e);
+      }
+    } else {
+      await _fallbackRepo.deleteHabit(id);
+    }
   }
 
   @override
   Future<void> toggleHabitActive(String id, bool isActive) async {
-    await _fallbackRepo.toggleHabitActive(id, isActive);
-    if (!_isOnline) return;
-
-    try {
-      await _client!.from('habits').update({
-        'is_active': isActive,
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', id);
-    } catch (_) {}
+    if (_isOnline) {
+      try {
+        final now = DateTime.now();
+        await _client!.from('habits').update({
+          'is_active': isActive,
+          'updated_at': now.toIso8601String(),
+        }).eq('id', id);
+        await _fallbackRepo.toggleHabitActive(id, isActive);
+      } catch (e) {
+        throw HabitSyncException('Không thể cập nhật trạng thái thói quen trên Supabase: $e', cause: e);
+      }
+    } else {
+      await _fallbackRepo.toggleHabitActive(id, isActive);
+    }
   }
 
   @override
@@ -125,8 +148,8 @@ class SupabaseHabitRepository implements HabitRepository {
         await _fallbackRepo.recordCheckIn(log);
       }
       return list;
-    } catch (_) {
-      return _fallbackRepo.getHabitLogs(habitId, fromDate: fromDate, toDate: toDate);
+    } catch (e) {
+      throw HabitSyncException('Không thể tải nhật ký thói quen từ Supabase: $e', cause: e);
     }
   }
 
@@ -148,8 +171,8 @@ class SupabaseHabitRepository implements HabitRepository {
         await _fallbackRepo.recordCheckIn(log);
       }
       return list;
-    } catch (_) {
-      return _fallbackRepo.getAllLogsForDate(ownerUid, date);
+    } catch (e) {
+      throw HabitSyncException('Không thể tải nhật ký ngày $date từ Supabase: $e', cause: e);
     }
   }
 
@@ -172,33 +195,41 @@ class SupabaseHabitRepository implements HabitRepository {
       final log = HabitLog.fromSupabaseMap(response);
       await _fallbackRepo.recordCheckIn(log);
       return log;
-    } catch (_) {
-      return _fallbackRepo.getLogForHabitAndDate(habitId, date);
+    } catch (e) {
+      throw HabitSyncException('Không thể kiểm tra nhật ký check-in từ Supabase: $e', cause: e);
     }
   }
 
   @override
   Future<void> recordCheckIn(HabitLog log) async {
-    await _fallbackRepo.recordCheckIn(log);
-    if (!_isOnline) return;
-
-    try {
-      // Upsert dựa trên ràng buộc unique: (owner_uid, habit_id, local_date)
-      await _client!.from('habit_logs').upsert(
-            log.toSupabaseMap(),
-            onConflict: 'owner_uid,habit_id,local_date',
-          );
-    } catch (_) {}
+    if (_isOnline) {
+      try {
+        // Upsert dựa trên ràng buộc unique: (owner_uid, habit_id, local_date)
+        await _client!.from('habit_logs').upsert(
+              log.toSupabaseMap(),
+              onConflict: 'owner_uid,habit_id,local_date',
+            );
+        await _fallbackRepo.recordCheckIn(log);
+      } catch (e) {
+        throw HabitSyncException('Lỗi ghi nhận check-in lên Supabase: $e', cause: e);
+      }
+    } else {
+      await _fallbackRepo.recordCheckIn(log);
+    }
   }
 
   @override
   Future<void> deleteHabitLog(String logId) async {
-    await _fallbackRepo.deleteHabitLog(logId);
-    if (!_isOnline) return;
-
-    try {
-      await _client!.from('habit_logs').delete().eq('id', logId);
-    } catch (_) {}
+    if (_isOnline) {
+      try {
+        await _client!.from('habit_logs').delete().eq('id', logId);
+        await _fallbackRepo.deleteHabitLog(logId);
+      } catch (e) {
+        throw HabitSyncException('Lỗi hủy check-in trên Supabase: $e', cause: e);
+      }
+    } else {
+      await _fallbackRepo.deleteHabitLog(logId);
+    }
   }
 
   @override

@@ -17,6 +17,9 @@ enum HabitDayStatus {
   /// Ngày hôm nay/đến hạn nhưng người dùng chưa bấm ghi nhận.
   pending,
 
+  /// Ngày trong tương lai (chưa tới hạn thực hiện).
+  future,
+
   /// Đã hoàn thành.
   completed,
 
@@ -26,7 +29,7 @@ enum HabitDayStatus {
   /// Đã quá hạn mà không thực hiện (ngày trong quá khứ không có log).
   missed,
 
-  /// Ngày nghỉ theo lịch (không phải ngày đến hạn).
+  /// Ngày nghỉ theo lịch (không phải ngày đến hạn) hoặc đang trong giai đoạn tạm dừng.
   restDay,
 }
 

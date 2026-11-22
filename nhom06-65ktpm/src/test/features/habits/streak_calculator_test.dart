@@ -157,6 +157,103 @@ void main() {
       expect(streak.totalCompletions, equals(1));
     });
 
+    test('Future day is classified as future and not evaluated for check-in (P1 Finding)', () {
+      final habit = Habit(
+        id: 'h-future',
+        ownerUid: userId,
+        name: 'Tập thể dục tương lai',
+        frequency: const HabitFrequency.daily(),
+        createdAt: baseMonday,
+      );
+
+      final today = baseMonday;
+      final tomorrow = baseMonday.add(const Duration(days: 1));
+      final nextWeek = baseMonday.add(const Duration(days: 7));
+
+      final statusTomorrow = StreakCalculator.getDayStatus(habit, [], tomorrow, referenceDate: today);
+      final statusNextWeek = StreakCalculator.getDayStatus(habit, [], nextWeek, referenceDate: today);
+
+      expect(statusTomorrow, equals(HabitDayStatus.future));
+      expect(statusNextWeek, equals(HabitDayStatus.future));
+    });
+
+    test('Modifying future frequency preserves historical streak ("sửa lịch tương lai không sửa lịch sử") (P1 Finding)', () {
+      final t2 = baseMonday;
+      final t3 = baseMonday.add(const Duration(days: 1));
+      final t4 = baseMonday.add(const Duration(days: 2)); // Thứ Tư
+      final t5 = baseMonday.add(const Duration(days: 3)); // Thứ Năm: ngày đổi lịch
+
+      // Ban đầu từ T2 là thói quen hằng ngày (daily)
+      // Người dùng hoàn thành T2, T3, T4 (3 ngày liên tiếp)
+      final logs = [
+        HabitLog(id: 'l1', habitId: 'h-history', userId: userId, date: t2, status: CheckInStatus.completed),
+        HabitLog(id: 'l2', habitId: 'h-history', userId: userId, date: t3, status: CheckInStatus.completed),
+        HabitLog(id: 'l3', habitId: 'h-history', userId: userId, date: t4, status: CheckInStatus.completed),
+      ];
+
+      // Đến Thứ Năm, người dùng đổi lịch sang chỉ tập Cuối tuần (weekends: T7, CN)
+      final habitWithHistory = Habit(
+        id: 'h-history',
+        ownerUid: userId,
+        name: 'Luyện tập',
+        frequency: const HabitFrequency.weekends(), // Chu kỳ mới
+        createdAt: t2,
+        frequencyHistory: [
+          FrequencySchedule(frequency: const HabitFrequency.daily(), effectiveFrom: t2),
+          FrequencySchedule(frequency: const HabitFrequency.weekends(), effectiveFrom: t5),
+        ],
+      );
+
+      // Kiểm tra chu kỳ có hiệu lực:
+      expect(habitWithHistory.getFrequencyOn(t2), equals(const HabitFrequency.daily()));
+      expect(habitWithHistory.getFrequencyOn(t3), equals(const HabitFrequency.daily()));
+      expect(habitWithHistory.getFrequencyOn(t4), equals(const HabitFrequency.daily()));
+      expect(habitWithHistory.getFrequencyOn(t5), equals(const HabitFrequency.weekends()));
+
+      // Tính streak tại thời điểm Thứ Năm:
+      // Các ngày T2, T3, T4 trong quá khứ vẫn được đánh giá theo chu kỳ daily -> chuỗi 3 ngày hoàn thành vẫn nguyên vẹn!
+      final streak = StreakCalculator.calculate(habitWithHistory, logs, referenceDate: t5);
+      expect(streak.currentStreak, equals(3));
+      expect(streak.longestStreak, equals(3));
+      expect(streak.totalCompletions, equals(3));
+    });
+
+    test('Paused habit freezes streak and does NOT penalize missed days during pause (P2 Finding)', () {
+      final t2 = baseMonday;
+      final t3 = baseMonday.add(const Duration(days: 1));
+      final t5 = baseMonday.add(const Duration(days: 3));
+
+      // Hoàn thành T2 (chuỗi 1 ngày)
+      final logs = [
+        HabitLog(id: 'l1', habitId: 'h-pause', userId: userId, date: t2, status: CheckInStatus.completed),
+      ];
+
+      // Thói quen bị tạm dừng vào đầu ngày Thứ Ba (T3)
+      final pausedHabit = Habit(
+        id: 'h-pause',
+        ownerUid: userId,
+        name: 'Đọc sách tạm dừng',
+        frequency: const HabitFrequency.daily(),
+        createdAt: t2,
+        isActive: false,
+        pausedAt: t3,
+      );
+
+      // Xem vào ngày Thứ Sáu (T5):
+      // Trong các ngày T3, T4, T5 thói quen đang tạm dừng nên không sinh ngày đến hạn,
+      // chuỗi 1 ngày từ T2 được đóng băng (freeze), không bị phạt về 0!
+      final streakAtT5 = StreakCalculator.calculate(pausedHabit, logs, referenceDate: t5);
+
+      expect(streakAtT5.currentStreak, equals(1));
+      expect(streakAtT5.longestStreak, equals(1));
+      expect(streakAtT5.totalDueDays, equals(1)); // Chỉ có T2 là due day trước khi dừng
+      expect(streakAtT5.totalCompletions, equals(1));
+
+      // Trạng thái ngày T3, T4 trong giai đoạn tạm dừng là restDay
+      final statusT3 = StreakCalculator.getDayStatus(pausedHabit, logs, t3, referenceDate: t5);
+      expect(statusT3, equals(HabitDayStatus.restDay));
+    });
+
     test('Deduplication: multiple logs on same date takes latest log without double counting', () {
       final habit = Habit(
         id: 'h6',
@@ -195,7 +292,7 @@ void main() {
       expect(streak.currentStreak, equals(1));
     });
 
-    test('getDayStatus identifies completed, skipped, restDay, missed, and pending accurately', () {
+    test('getDayStatus identifies completed, skipped, restDay, missed, pending, and future accurately', () {
       final habit = Habit(
         id: 'h7',
         ownerUid: userId,
@@ -209,6 +306,7 @@ void main() {
       final t4 = baseMonday.add(const Duration(days: 2)); // Wed (missed)
       final t6 = baseMonday.add(const Duration(days: 4)); // Fri (today pending)
       final t7 = baseMonday.add(const Duration(days: 5)); // Sat (rest day)
+      final nextMon = baseMonday.add(const Duration(days: 7)); // Next Mon (future)
 
       final logs = [
         HabitLog(id: 'l1', habitId: 'h7', userId: userId, date: t2, status: CheckInStatus.completed),
@@ -220,12 +318,14 @@ void main() {
       final statusT4 = StreakCalculator.getDayStatus(habit, logs, t4, referenceDate: t6);
       final statusT6 = StreakCalculator.getDayStatus(habit, logs, t6, referenceDate: t6);
       final statusT7 = StreakCalculator.getDayStatus(habit, logs, t7, referenceDate: t6);
+      final statusFuture = StreakCalculator.getDayStatus(habit, logs, nextMon, referenceDate: t6);
 
       expect(statusT2, equals(HabitDayStatus.completed));
       expect(statusT3, equals(HabitDayStatus.skipped));
       expect(statusT4, equals(HabitDayStatus.missed));
       expect(statusT6, equals(HabitDayStatus.pending));
       expect(statusT7, equals(HabitDayStatus.restDay));
+      expect(statusFuture, equals(HabitDayStatus.future));
     });
 
     test('getWeekStatus returns exactly 7 items from Monday to Sunday', () {

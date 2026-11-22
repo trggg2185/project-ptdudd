@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../../core/utils/date_helper.dart';
 import '../../../../core/utils/id_generator.dart';
+import '../../data/repositories/supabase_habit_repository.dart';
 import '../../domain/entities/habit.dart';
 import '../../domain/entities/habit_log.dart';
 import '../../domain/entities/streak_info.dart';
@@ -49,7 +50,8 @@ class HabitController extends ChangeNotifier {
 
   /// Số thói quen đến hạn trong ngày đang chọn.
   int get dueCountForSelectedDate {
-    return _habits.where((h) => h.isActive && h.frequency.isDueOn(_selectedDate)).length;
+    if (DateHelper.isFutureDay(_selectedDate, DateTime.now())) return 0;
+    return _habits.where((h) => h.isActive && h.getFrequencyOn(_selectedDate).isDueOn(_selectedDate)).length;
   }
 
   /// Số thói quen đã hoàn thành trong ngày đang chọn.
@@ -82,7 +84,7 @@ class HabitController extends ChangeNotifier {
       _habits = await repository.getHabits(ownerUid: currentUserId);
       await _refreshDayLogsAndStreaks();
     } catch (e) {
-      _errorMessage = 'Không thể tải danh sách thói quen: $e';
+      _errorMessage = _formatErrorMessage('Không thể tải danh sách thói quen', e);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -103,11 +105,19 @@ class HabitController extends ChangeNotifier {
   }
 
   /// Ghi nhận Check-in cho thói quen.
+  /// Chặn tuyệt đối hành vi ghi nhận check-in vào ngày tương lai (P1 Finding).
   Future<void> checkInHabit({
     required String habitId,
     CheckInStatus status = CheckInStatus.completed,
     String? reason,
   }) async {
+    // 1. Chặn tương lai:
+    if (DateHelper.isFutureDay(_selectedDate, DateTime.now())) {
+      _errorMessage = 'Không thể ghi nhận check-in cho ngày trong tương lai.';
+      notifyListeners();
+      return;
+    }
+
     try {
       final log = HabitLog(
         id: IdGenerator.generateUuid(),
@@ -126,9 +136,10 @@ class HabitController extends ChangeNotifier {
       final habit = _habits.firstWhere((h) => h.id == habitId);
       _streakInfos[habitId] = await repository.getStreakInfo(habit, referenceDate: _selectedDate);
 
+      _errorMessage = null;
       notifyListeners();
     } catch (e) {
-      _errorMessage = 'Lỗi khi ghi nhận check-in: $e';
+      _errorMessage = _formatErrorMessage('Lỗi khi ghi nhận check-in', e);
       notifyListeners();
     }
   }
@@ -145,9 +156,10 @@ class HabitController extends ChangeNotifier {
       final habit = _habits.firstWhere((h) => h.id == habitId);
       _streakInfos[habitId] = await repository.getStreakInfo(habit, referenceDate: _selectedDate);
 
+      _errorMessage = null;
       notifyListeners();
     } catch (e) {
-      _errorMessage = 'Lỗi khi hủy check-in: $e';
+      _errorMessage = _formatErrorMessage('Lỗi khi hủy check-in', e);
       notifyListeners();
     }
   }
@@ -161,8 +173,9 @@ class HabitController extends ChangeNotifier {
       await repository.saveHabit(habit);
       _habits.insert(0, habit);
       _streakInfos[habit.id] = await repository.getStreakInfo(habit, referenceDate: _selectedDate);
+      _errorMessage = null;
     } catch (e) {
-      _errorMessage = 'Không thể tạo thói quen: $e';
+      _errorMessage = _formatErrorMessage('Không thể tạo thói quen', e);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -170,19 +183,39 @@ class HabitController extends ChangeNotifier {
   }
 
   /// Cập nhật thông tin thói quen đã có.
+  /// Lưu lại lịch sử chu kỳ nếu có thay đổi chu kỳ để bảo toàn streak quá khứ (P1 Finding).
   Future<void> updateHabit(Habit updatedHabit) async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      await repository.saveHabit(updatedHabit);
       final index = _habits.indexWhere((h) => h.id == updatedHabit.id);
+      Habit habitToSave = updatedHabit;
+
       if (index != -1) {
-        _habits[index] = updatedHabit;
+        final existing = _habits[index];
+        // Nếu chu kỳ lặp thay đổi: ghi nhận mốc lịch mới có hiệu lực từ hôm nay
+        if (existing.frequency != updatedHabit.frequency) {
+          final newHistory = List<FrequencySchedule>.from(existing.frequencyHistory);
+          newHistory.add(
+            FrequencySchedule(
+              frequency: updatedHabit.frequency,
+              effectiveFrom: DateHelper.normalize(DateTime.now()),
+            ),
+          );
+          habitToSave = updatedHabit.copyWith(frequencyHistory: newHistory);
+        }
       }
-      _streakInfos[updatedHabit.id] = await repository.getStreakInfo(updatedHabit, referenceDate: _selectedDate);
+
+      await repository.saveHabit(habitToSave);
+
+      if (index != -1) {
+        _habits[index] = habitToSave;
+      }
+      _streakInfos[habitToSave.id] = await repository.getStreakInfo(habitToSave, referenceDate: _selectedDate);
+      _errorMessage = null;
     } catch (e) {
-      _errorMessage = 'Không thể cập nhật thói quen: $e';
+      _errorMessage = _formatErrorMessage('Không thể cập nhật thói quen', e);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -190,16 +223,33 @@ class HabitController extends ChangeNotifier {
   }
 
   /// Bật/tắt kích hoạt thói quen (tạm dừng / tiếp tục).
+  /// Cập nhật `pausedAt` để đóng băng streak khi tạm dừng (P2 Finding).
   Future<void> toggleActive(String habitId) async {
-    final habit = _habits.firstWhere((h) => h.id == habitId);
-    final newActiveState = !habit.isActive;
-    await repository.toggleHabitActive(habitId, newActiveState);
+    try {
+      final habit = _habits.firstWhere((h) => h.id == habitId);
+      final newActiveState = !habit.isActive;
+      final now = DateTime.now();
 
-    final index = _habits.indexWhere((h) => h.id == habitId);
-    if (index != -1) {
-      _habits[index] = habit.copyWith(isActive: newActiveState);
+      final updated = habit.copyWith(
+        isActive: newActiveState,
+        pausedAt: newActiveState ? null : now,
+      );
+
+      await repository.saveHabit(updated);
+      await repository.toggleHabitActive(habitId, newActiveState);
+
+      final index = _habits.indexWhere((h) => h.id == habitId);
+      if (index != -1) {
+        _habits[index] = updated;
+      }
+      _streakInfos[habitId] = await repository.getStreakInfo(updated, referenceDate: _selectedDate);
+
+      _errorMessage = null;
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = _formatErrorMessage('Không thể chuyển trạng thái thói quen', e);
+      notifyListeners();
     }
-    notifyListeners();
   }
 
   /// Xóa thói quen.
@@ -209,9 +259,10 @@ class HabitController extends ChangeNotifier {
       _habits.removeWhere((h) => h.id == habitId);
       _selectedDateLogs.remove(habitId);
       _streakInfos.remove(habitId);
+      _errorMessage = null;
       notifyListeners();
     } catch (e) {
-      _errorMessage = 'Không thể xóa thói quen: $e';
+      _errorMessage = _formatErrorMessage('Không thể xóa thói quen', e);
       notifyListeners();
     }
   }
@@ -243,5 +294,12 @@ class HabitController extends ChangeNotifier {
 
     _selectedDateLogs = logsMap;
     _streakInfos = streakMap;
+  }
+
+  String _formatErrorMessage(String prefix, Object error) {
+    if (error is HabitSyncException) {
+      return '$prefix: ${error.message}';
+    }
+    return '$prefix: $error';
   }
 }

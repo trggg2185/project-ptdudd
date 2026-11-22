@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:healthylife/features/auth/data/firebase_auth_repository.dart';
 import 'package:healthylife/features/auth/domain/auth_repository.dart';
 
@@ -61,6 +63,67 @@ void main() {
       );
     },
   );
+
+  group('Android sign-out', () {
+    setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.android);
+    tearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    test(
+      'clears Google credentials and reuses Google initialization',
+      () async {
+        final firebase = _Firebase();
+        final google = _Google();
+        final auth = FirebaseAuthRepository(firebase, google: google);
+
+        for (final uid in ['user-a', 'user-b']) {
+          firebase.user = _User(uid, Future.value(_Token(uid)));
+          await auth.signOut();
+          expect(await auth.accessToken(), isNull);
+        }
+
+        expect(google.calls, ['initialize', 'signOut', 'signOut']);
+      },
+    );
+
+    test('clears the Firebase session even if Google cleanup fails', () async {
+      final firebase = _Firebase()
+        ..user = _User('user-a', Future.value(_Token('user-a')));
+      final google = _Google(failSignOut: true);
+      final auth = FirebaseAuthRepository(firebase, google: google);
+
+      await auth.signOut();
+
+      expect(google.calls, ['initialize', 'signOut']);
+      expect(await auth.accessToken(), isNull);
+    });
+  });
+}
+
+class _Google extends Fake implements GoogleSignIn {
+  _Google({this.failSignOut = false});
+
+  final bool failSignOut;
+  final List<String> calls = [];
+
+  @override
+  Future<void> initialize({
+    String? clientId,
+    String? serverClientId,
+    String? nonce,
+    String? hostedDomain,
+  }) async {
+    calls.add('initialize');
+  }
+
+  @override
+  Future<void> signOut() async {
+    calls.add('signOut');
+    if (failSignOut) {
+      throw const GoogleSignInException(
+        code: GoogleSignInExceptionCode.unknownError,
+      );
+    }
+  }
 }
 
 class _Firebase extends Fake implements FirebaseAuth {

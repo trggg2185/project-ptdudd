@@ -5,9 +5,11 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../domain/auth_repository.dart';
 
 class FirebaseAuthRepository implements AuthRepository {
-  FirebaseAuthRepository(this._auth);
+  FirebaseAuthRepository(this._auth, {GoogleSignIn? google})
+    : _google = google ?? GoogleSignIn.instance;
 
   final FirebaseAuth _auth;
+  final GoogleSignIn _google;
   Future<void>? _googleInitialization;
 
   @override
@@ -52,18 +54,14 @@ class FirebaseAuthRepository implements AuthRepository {
       throw AuthFailure.providerUnavailable;
     }
 
-    final google = GoogleSignIn.instance;
     try {
-      // Google Services supplies default_web_client_id from google-services.json.
-      _googleInitialization ??= google.initialize();
-      await _googleInitialization;
+      await _initializeGoogle();
     } on GoogleSignInException {
-      _googleInitialization = null;
       throw AuthFailure.providerUnavailable;
     }
 
     try {
-      final account = await google.authenticate();
+      final account = await _google.authenticate();
       final idToken = account.authentication.idToken;
       if (idToken == null || idToken.isEmpty) {
         throw AuthFailure.providerUnavailable;
@@ -86,7 +84,27 @@ class FirebaseAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> signOut() => _firebase(_auth.signOut);
+  Future<void> signOut() async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        await _initializeGoogle();
+        await _google.signOut();
+      } catch (_) {
+        // Clearing Android's saved credential state is best-effort.
+      }
+    }
+    await _firebase(_auth.signOut);
+  }
+
+  Future<void> _initializeGoogle() async {
+    try {
+      // Google Services supplies default_web_client_id from google-services.json.
+      await (_googleInitialization ??= _google.initialize());
+    } catch (_) {
+      _googleInitialization = null;
+      rethrow;
+    }
+  }
 
   @override
   Future<bool> hasDataAccess({bool refresh = false}) async {

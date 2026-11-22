@@ -3,15 +3,58 @@ import 'catalog_source.dart';
 /// Thực thể đại diện cho một món ăn trong danh mục đã kiểm duyệt.
 /// Phục vụ tiêu chí: nguyên liệu, dị nguyên, ngân sách, thời gian chuẩn bị và nguồn kiểm duyệt.
 class MealCatalogItem {
-  static const Set<String> _unknownIngredientMarkers = {
+  static const Set<String> _exactUnclearIngredientTokens = {
+    'other',
+    'misc',
+    'various',
+    'none',
+    'etc',
+    'khac',
+    'khác',
+    'v.v',
+    'vv',
+    '?',
+    '...',
+  };
+
+  static const List<String> _unclearIngredientPhrases = [
     'unknown',
+    'unclear',
+    'unspecified',
+    'unverified',
+    'mystery',
+    'secret',
+    'tbd',
+    'n/a',
     'khong_ro',
     'khong ro',
+    'không rõ',
     'chua_ro',
     'chua ro',
-    'unspecified',
-    'n/a',
-  };
+    'chưa rõ',
+    'khong_xac_dinh',
+    'khong xac dinh',
+    'không xác định',
+    'chua_xac_dinh',
+    'chua xac dinh',
+    'chưa xác định',
+    'khong_biet',
+    'khong biet',
+    'không biết',
+    'chua_biet',
+    'chua biet',
+    'chưa biết',
+    'bi_mat',
+    'bi mat',
+    'bí mật',
+    'tong_hop',
+    'tong hop',
+    'tổng hợp',
+    'nguyen_lieu_khac',
+    'nguyên liệu khác',
+    'thanh_phan_khac',
+    'thành phần khác',
+  ];
 
   final String id;
   final String slug;
@@ -50,15 +93,24 @@ class MealCatalogItem {
   });
 
   /// Kiểm tra món ăn có rõ thành phần nguyên liệu hay không.
-  /// Theo quy tắc đề án: món không rõ thành phần thì không được coi là an toàn.
+  /// Theo quy tắc đề án: món không rõ thành phần hoặc thiếu xác nhận `ingredients_clear`
+  /// thì không được coi là an toàn.
   bool get hasClearIngredients {
     if (!ingredientsClear || ingredients.isEmpty) {
       return false;
     }
     return ingredients.every((item) {
       final normalized = item.trim().toLowerCase();
-      return normalized.isNotEmpty &&
-          !_unknownIngredientMarkers.contains(normalized);
+      if (normalized.isEmpty ||
+          _exactUnclearIngredientTokens.contains(normalized)) {
+        return false;
+      }
+      for (final phrase in _unclearIngredientPhrases) {
+        if (normalized.contains(phrase)) {
+          return false;
+        }
+      }
+      return true;
     });
   }
 
@@ -106,7 +158,7 @@ class MealCatalogItem {
       name: (map['name'] ?? '') as String,
       mealType: (map['meal_type'] ?? 'lunch') as String,
       ingredients: List<String>.from(map['ingredients'] as List? ?? const []),
-      ingredientsClear: (map['ingredients_clear'] ?? true) as bool,
+      ingredientsClear: map['ingredients_clear'] == true,
       allergens: List<String>.from(map['allergens'] as List? ?? const []),
       dietTags: List<String>.from(map['diet_tags'] as List? ?? const []),
       requiresCooking: (map['requires_cooking'] ?? true) as bool,

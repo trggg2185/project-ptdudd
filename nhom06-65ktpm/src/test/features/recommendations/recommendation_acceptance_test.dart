@@ -5,6 +5,7 @@ import 'package:healthylife/features/recommendations/data/fixtures/sample_profil
 import 'package:healthylife/features/recommendations/domain/entities/exercise_catalog_item.dart';
 import 'package:healthylife/features/recommendations/domain/entities/hard_filter_result.dart';
 import 'package:healthylife/features/recommendations/domain/entities/meal_catalog_item.dart';
+import 'package:healthylife/features/recommendations/domain/entities/recommendation_profile.dart';
 import 'package:healthylife/features/recommendations/domain/services/recommendation_engine.dart';
 import 'package:healthylife/features/recommendations/presentation/widgets/recommendation_preview_view.dart';
 
@@ -147,6 +148,86 @@ void main() {
       expect(exResult.alternatives, isEmpty);
       expect(mealResult.isEmpty, isTrue);
       expect(mealResult.alternatives, isEmpty);
+    });
+
+    test('gợi ý bữa trưa không bao giờ đưa Gỏi cuốn khi dị ứng riêng đậu phộng hoặc đậu nành', () {
+      const peanutOnlyProfile = RecommendationProfile(
+        isAdultConfirmed: true,
+        timezone: 'Asia/Ho_Chi_Minh',
+        goal: 'maintain_habit',
+        availableMinutesPerSession: 20,
+        sessionsPerWeek: 3,
+        allergiesConfirmed: true,
+        allergies: ['peanut'],
+        canCook: false,
+        maxMealPrepMinutes: 15,
+        maxMealBudgetVnd: 50000,
+        preferredDietTags: ['light', 'quick_prep'],
+      );
+      const soyOnlyProfile = RecommendationProfile(
+        isAdultConfirmed: true,
+        timezone: 'Asia/Ho_Chi_Minh',
+        goal: 'maintain_habit',
+        availableMinutesPerSession: 20,
+        sessionsPerWeek: 3,
+        allergiesConfirmed: true,
+        allergies: ['soy'],
+        canCook: false,
+        maxMealPrepMinutes: 15,
+        maxMealBudgetVnd: 50000,
+        preferredDietTags: ['light', 'quick_prep'],
+      );
+
+      final peanutRes = engine.recommendMeals(
+        catalog: SampleCatalogFixture.sampleMeals,
+        profile: peanutOnlyProfile,
+      );
+      final soyRes = engine.recommendMeals(
+        catalog: SampleCatalogFixture.sampleMeals,
+        profile: soyOnlyProfile,
+      );
+
+      expect(
+        [...peanutRes.recommendations, ...peanutRes.alternatives]
+            .any((r) => r.item.slug == 'shrimp-fresh-spring-rolls'),
+        isFalse,
+      );
+      expect(
+        [...soyRes.recommendations, ...soyRes.alternatives]
+            .any((r) => r.item.slug == 'shrimp-fresh-spring-rolls'),
+        isFalse,
+      );
+    });
+
+    test('engine không gợi ý bản ghi món ăn có nguyên liệu không rõ và thiếu ingredients_clear', () {
+      final unclearRecord = MealCatalogItem.fromMap({
+        'id': 'meal-unclear-no-flag',
+        'slug': 'unclear-no-flag',
+        'name': 'Món ăn nhanh chưa rõ nước sốt',
+        'meal_type': 'lunch',
+        'ingredients': ['bánh mì', 'nước sốt không rõ'],
+        'allergens': <String>[],
+        'diet_tags': ['quick_prep'],
+        'requires_cooking': false,
+        'budget_tier': 'low',
+        'estimated_cost': 20000,
+        'preparation_minutes': 5,
+        'approved': true,
+        'source_name': SampleCatalogFixture.whoHealthyDietSource.name,
+        'source_url': SampleCatalogFixture.whoHealthyDietSource.url,
+        'source_version': SampleCatalogFixture.whoHealthyDietSource.version,
+        'description': 'Bản ghi thiếu ingredients_clear và có thành phần không rõ.',
+      });
+
+      final result = engine.recommendMeals(
+        catalog: [unclearRecord],
+        profile: SampleProfileFixtures.officeWorkerWalking,
+      );
+
+      expect(result.status, RecommendationGateStatus.ready);
+      expect(result.isEmpty, isTrue);
+      expect(result.alternatives, isEmpty);
+      expect(result.excludedCount, 1);
     });
   });
 

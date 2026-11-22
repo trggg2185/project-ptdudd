@@ -331,9 +331,9 @@
       "slug": "shrimp-fresh-spring-rolls",
       "name": "Gỏi cuốn tôm thịt rau sống",
       "meal_type": "lunch",
-      "ingredients": ["banh_trang", "bun_tuoi", "tom", "thit_heo_nac", "rau_xa_lach", "dua_leo"],
+      "ingredients": ["banh_trang", "bun_tuoi", "tom", "thit_heo_nac", "rau_xa_lach", "dua_leo", "tuong_dau_nanh", "dau_phong"],
       "ingredients_clear": true,
-      "allergens": ["shellfish", "seafood"],
+      "allergens": ["shellfish", "seafood", "peanut", "soy"],
       "diet_tags": ["balanced", "light", "quick_prep"],
       "requires_cooking": false,
       "budget_tier": "medium",
@@ -344,8 +344,8 @@
       "source_url": "https://www.who.int/news-room/fact-sheets/detail/healthy-diet",
       "source_version": "WHO Healthy Diet fact sheet (tham khảo 15/11/2026)",
       "reviewed_at": "2026-11-22",
-      "description": "Món cuốn thanh nhẹ nhiều rau sống, phù hợp ngày bận hoặc thời tiết nóng.",
-      "notes": "Kiểm tra thành phần nước chấm nếu có dị ứng đậu phộng hoặc đậu nành."
+      "description": "Món cuốn thanh nhẹ nhiều rau sống kèm nước chấm tương đậu phộng, phù hợp ngày bận hoặc thời tiết nóng.",
+      "notes": "Bao gồm nước chấm tương đậu nành và đậu phộng; chứa hải sản, đậu phộng và đậu nành."
     },
     {
       "id": "meal-lentil-soup",

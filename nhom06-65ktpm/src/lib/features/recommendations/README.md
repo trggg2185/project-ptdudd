@@ -3,7 +3,7 @@
 - **Người phụ trách:** Nguyễn Đăng Đại (`@nddai0710`)
 - **Review chéo:** Nguyễn Thế Trưởng (`@trggg2185`)
 - **Nhánh phát triển:** `feature/nhom06/recommend` (base PR nội bộ: `nhom06-65ktpm`)
-- **Trạng thái hiện tại:** Đã hoàn thiện danh mục mẫu/seed có nguồn kiểm duyệt, bộ lọc cứng an toàn, bộ xếp hạng có giải thích, widget xem trước độc lập và 29 unit/widget tests chạy bằng mock/fixture. Chưa gắn vào `lib/main.dart`, điều hướng chung hoặc truy vấn trực tiếp từ Supabase thật.
+- **Trạng thái hiện tại:** Đã hoàn thiện danh mục mẫu/seed có nguồn kiểm duyệt, bộ lọc cứng an toàn, bộ xếp hạng có giải thích, widget xem trước độc lập và 34 unit/widget tests chạy bằng mock/fixture. Chưa gắn vào `lib/main.dart`, điều hướng chung hoặc truy vấn trực tiếp từ Supabase thật.
 
 ---
 
@@ -41,9 +41,9 @@ nhom06-65ktpm/src/
 │   └── catalog_seed.json                        # File seed JSON đồng bộ 10 môn tập + 10 món ăn với fixture
 └── test/features/recommendations/
     ├── catalog_fixture_test.dart                # Kiểm thử danh mục mẫu, nguồn kiểm duyệt và JSON seed (4 tests)
-    ├── catalog_hard_filter_test.dart            # Kiểm thử cổng đầu vào và lọc cứng (9 tests)
+    ├── catalog_hard_filter_test.dart            # Kiểm thử cổng đầu vào và lọc cứng (12 tests)
     ├── recommendation_engine_test.dart          # Kiểm thử xếp hạng, giải thích, đa dạng và use case (6 tests)
-    └── recommendation_acceptance_test.dart      # Kiểm thử nghiệm thu ca biên + widget test (10 tests)
+    └── recommendation_acceptance_test.dart      # Kiểm thử nghiệm thu ca biên + widget test (12 tests)
 ```
 
 ---
@@ -84,7 +84,7 @@ flutter test --no-pub
 ### Phạm vi đã kiểm tra và chưa kiểm tra
 - **Đã kiểm tra:**
   - `flutter analyze --no-pub`: không có lỗi/cảnh báo.
-  - `flutter test --no-pub`: toàn bộ **29/29** unit tests và widget test của module `recommendations` đạt.
+  - `flutter test --no-pub`: toàn bộ **34/34** unit tests và widget test của module `recommendations` đạt.
 - **Chưa kiểm tra:**
   - Chưa kiểm thử đọc danh mục trực tiếp từ Supabase thật (đang chạy với `FixtureCatalogRepository` mock/fixture).
   - Chưa kiểm thử luồng tích hợp với `main.dart`, `auth`, `profile` và `planner`.
@@ -98,4 +98,4 @@ flutter test --no-pub
   - Gắn `RecommendationPreviewView` vào điều hướng chung; sử dụng callback `onSelectExercise` / `onSelectMeal` để chuyển lựa chọn người dùng duyệt sang lịch nháp của `planner`.
 - **Với Hà (`@HanHoangHa` — `supabase/migrations`, `supabase/seed`):**
   - `ExerciseCatalogItem.fromMap` và `MealCatalogItem.fromMap` đã tương thích các cột cơ bản trong bảng `exercise_catalog` và `meal_catalog` (`slug`, `name`, `description`, `duration_minutes`, `equipment`, `experience_level`, `ingredients`, `allergens`, `estimated_cost`, `preparation_minutes`, `source_name`, `source_url`, `source_version`, `approved`).
-  - Đề xuất chốt thêm (dạng cột hoặc `jsonb` metadata) cho các trường phục vụ lọc/xếp hạng: `category`, `environment`, `budget_tier`, `contraindicated_limitations`, `tags`, `meal_type`, `ingredients_clear`, `diet_tags`, `requires_cooking`, `notes`; đồng thời thống nhất nguồn seed giữa `supabase/seed/20261121_initial_catalog.sql` và `supabase/seed/catalog_seed.json`.
+  - Đề xuất chốt thêm (dạng cột hoặc `jsonb` metadata) cho các trường phục vụ lọc/xếp hạng: `category`, `environment`, `budget_tier`, `contraindicated_limitations`, `tags`, `meal_type`, `ingredients_clear`, `diet_tags`, `requires_cooking`, `notes`; lưu ý `MealCatalogItem.fromMap` mặc định fail-closed (`ingredientsClear = false`) khi thiếu `ingredients_clear` để không gợi ý bản ghi chưa xác nhận rõ thành phần. Đồng thời thống nhất nguồn seed giữa `supabase/seed/20261121_initial_catalog.sql` và `supabase/seed/catalog_seed.json`.

@@ -236,5 +236,130 @@ void main() {
       expect(result.eligibleItems, isEmpty);
       expect(result.message, isNotNull);
     });
+
+    test('loại Gỏi cuốn tôm thịt rau sống khi hồ sơ chỉ dị ứng riêng đậu phộng (peanut)', () {
+      final result = filter.filterMeals(
+        catalog: SampleCatalogFixture.sampleMeals,
+        profile: validAdultProfile(
+          allergiesConfirmed: true,
+          allergies: const ['peanut'],
+          canCook: false,
+          maxMealPrepMinutes: 15,
+          maxMealBudgetVnd: 50000,
+        ),
+        mealType: 'lunch',
+      );
+
+      expect(result.status, RecommendationGateStatus.ready);
+      expect(
+        result.eligibleItems.any((m) => m.slug == 'shrimp-fresh-spring-rolls'),
+        isFalse,
+      );
+      final excludedRoll = result.excludedItems.firstWhere(
+        (e) => e.item.slug == 'shrimp-fresh-spring-rolls',
+      );
+      expect(excludedRoll.reasons.join(' '), contains('peanut'));
+    });
+
+    test('loại Gỏi cuốn tôm thịt rau sống khi hồ sơ chỉ dị ứng riêng đậu nành (soy)', () {
+      final result = filter.filterMeals(
+        catalog: SampleCatalogFixture.sampleMeals,
+        profile: validAdultProfile(
+          allergiesConfirmed: true,
+          allergies: const ['soy'],
+          canCook: false,
+          maxMealPrepMinutes: 15,
+          maxMealBudgetVnd: 50000,
+        ),
+        mealType: 'lunch',
+      );
+
+      expect(result.status, RecommendationGateStatus.ready);
+      expect(
+        result.eligibleItems.any((m) => m.slug == 'shrimp-fresh-spring-rolls'),
+        isFalse,
+      );
+      final excludedRoll = result.excludedItems.firstWhere(
+        (e) => e.item.slug == 'shrimp-fresh-spring-rolls',
+      );
+      expect(excludedRoll.reasons.join(' '), contains('soy'));
+    });
+
+    test('loại món đọc từ map bị thiếu ingredients_clear hoặc có nguyên liệu tiếng Việt không rõ', () {
+      final missingFlagMeal = MealCatalogItem.fromMap({
+        'id': 'meal-missing-clear-flag',
+        'slug': 'missing-clear-flag-meal',
+        'name': 'Món thiếu cờ xác nhận thành phần',
+        'meal_type': 'lunch',
+        'ingredients': ['gao_te', 'thit_ga_nac'],
+        'allergens': <String>[],
+        'diet_tags': ['balanced'],
+        'requires_cooking': false,
+        'budget_tier': 'low',
+        'estimated_cost': 30000,
+        'preparation_minutes': 10,
+        'approved': true,
+        'source_name': SampleCatalogFixture.whoHealthyDietSource.name,
+        'source_url': SampleCatalogFixture.whoHealthyDietSource.url,
+        'source_version': SampleCatalogFixture.whoHealthyDietSource.version,
+        'description': 'Bản ghi thiếu trường ingredients_clear.',
+      });
+
+      final unclearSauceMeal = MealCatalogItem.fromMap({
+        'id': 'meal-unclear-sauce',
+        'slug': 'unclear-sauce-meal',
+        'name': 'Món có nước chấm không rõ thành phần',
+        'meal_type': 'lunch',
+        'ingredients': ['banh_trang', 'rau_song', 'nước chấm không rõ'],
+        'ingredients_clear': true,
+        'allergens': <String>[],
+        'diet_tags': ['balanced'],
+        'requires_cooking': false,
+        'budget_tier': 'low',
+        'estimated_cost': 30000,
+        'preparation_minutes': 10,
+        'approved': true,
+        'source_name': SampleCatalogFixture.whoHealthyDietSource.name,
+        'source_url': SampleCatalogFixture.whoHealthyDietSource.url,
+        'source_version': SampleCatalogFixture.whoHealthyDietSource.version,
+        'description': 'Bản ghi có nguyên liệu chứa từ khóa không rõ.',
+      });
+
+      final unclearMissingBothMeal = MealCatalogItem.fromMap({
+        'id': 'meal-unclear-missing-flag',
+        'slug': 'unclear-and-missing-flag-meal',
+        'name': 'Món nguyên liệu chưa rõ và thiếu ingredients_clear',
+        'meal_type': 'lunch',
+        'ingredients': ['cơm', 'gia vị chưa xác định'],
+        'allergens': <String>[],
+        'diet_tags': ['balanced'],
+        'requires_cooking': false,
+        'budget_tier': 'low',
+        'estimated_cost': 25000,
+        'preparation_minutes': 10,
+        'approved': true,
+        'source_name': SampleCatalogFixture.whoHealthyDietSource.name,
+        'source_url': SampleCatalogFixture.whoHealthyDietSource.url,
+        'source_version': SampleCatalogFixture.whoHealthyDietSource.version,
+        'description': 'Bản ghi vừa không rõ nguyên liệu vừa thiếu ingredients_clear.',
+      });
+
+      expect(missingFlagMeal.ingredientsClear, isFalse);
+      expect(missingFlagMeal.hasClearIngredients, isFalse);
+      expect(unclearSauceMeal.hasClearIngredients, isFalse);
+      expect(unclearMissingBothMeal.hasClearIngredients, isFalse);
+
+      final result = filter.filterMeals(
+        catalog: [missingFlagMeal, unclearSauceMeal, unclearMissingBothMeal],
+        profile: validAdultProfile(allergiesConfirmed: true),
+      );
+
+      expect(result.status, RecommendationGateStatus.ready);
+      expect(result.eligibleItems, isEmpty);
+      expect(result.excludedItems.length, 3);
+      for (final excluded in result.excludedItems) {
+        expect(excluded.reasons.join(' '), contains('không rõ thành phần'));
+      }
+    });
   });
 }

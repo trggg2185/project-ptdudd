@@ -316,8 +316,10 @@ class SampleCatalogFixture {
         'thit_heo_nac',
         'rau_xa_lach',
         'dua_leo',
+        'tuong_dau_nanh',
+        'dau_phong',
       ],
-      allergens: ['shellfish', 'seafood'],
+      allergens: ['shellfish', 'seafood', 'peanut', 'soy'],
       dietTags: ['balanced', 'light', 'quick_prep'],
       requiresCooking: false,
       budgetTier: 'medium',
@@ -326,8 +328,9 @@ class SampleCatalogFixture {
       isVerified: true,
       source: whoHealthyDietSource,
       description:
-          'Món cuốn thanh nhẹ nhiều rau sống, phù hợp ngày bận hoặc thời tiết nóng.',
-      notes: 'Kiểm tra thành phần nước chấm nếu có dị ứng đậu phộng hoặc đậu nành.',
+          'Món cuốn thanh nhẹ nhiều rau sống kèm nước chấm tương đậu phộng, phù hợp ngày bận hoặc thời tiết nóng.',
+      notes:
+          'Bao gồm nước chấm tương đậu nành và đậu phộng; chứa hải sản, đậu phộng và đậu nành.',
     ),
     MealCatalogItem(
       id: 'meal-lentil-soup',

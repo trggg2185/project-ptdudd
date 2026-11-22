@@ -88,4 +88,19 @@ class HabitFrequency {
         : const {1, 2, 3, 4, 5, 6, 7};
     return HabitFrequency(type: type, scheduledDays: scheduledDays);
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! HabitFrequency) return false;
+    if (type != other.type) return false;
+    if (scheduledDays.length != other.scheduledDays.length) return false;
+    return scheduledDays.containsAll(other.scheduledDays);
+  }
+
+  @override
+  int get hashCode => Object.hash(type, Object.hashAll(scheduledDays));
+
+  @override
+  String toString() => 'HabitFrequency($displayLabel)';
 }

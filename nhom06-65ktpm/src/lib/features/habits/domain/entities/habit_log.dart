@@ -83,4 +83,73 @@ class HabitLog {
       loggedAt: loggedAt ?? this.loggedAt,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'habitId': habitId,
+      'userId': userId,
+      'date': DateHelper.formatIsoDate(date),
+      'status': status.name,
+      'reason': reason,
+      'loggedAt': loggedAt.toIso8601String(),
+    };
+  }
+
+  factory HabitLog.fromJson(Map<String, dynamic> json) {
+    final statusName = json['status'] as String? ?? 'completed';
+    final status = CheckInStatus.values.firstWhere(
+      (e) => e.name == statusName,
+      orElse: () => CheckInStatus.completed,
+    );
+    return HabitLog(
+      id: json['id'] as String,
+      habitId: json['habitId'] as String,
+      userId: json['userId'] as String? ?? '',
+      date: DateTime.parse(json['date'] as String),
+      status: status,
+      reason: json['reason'] as String?,
+      loggedAt: json['loggedAt'] != null ? DateTime.parse(json['loggedAt'] as String) : null,
+    );
+  }
+
+  Map<String, dynamic> toSupabaseMap() {
+    return {
+      'id': id,
+      'owner_uid': userId,
+      'habit_id': habitId,
+      'local_date': DateHelper.formatIsoDate(date),
+      'result': status == CheckInStatus.completed ? 'completed' : 'skipped',
+      'skipped_reason': reason,
+      'logged_at': loggedAt.toIso8601String(),
+    };
+  }
+
+  factory HabitLog.fromSupabaseMap(Map<String, dynamic> map) {
+    final resultStr = map['result'] as String? ?? 'completed';
+    return HabitLog(
+      id: map['id'] as String,
+      habitId: map['habit_id'] as String,
+      userId: map['owner_uid'] as String? ?? '',
+      date: DateTime.parse(map['local_date'] as String),
+      status: resultStr == 'skipped' ? CheckInStatus.skipped : CheckInStatus.completed,
+      reason: map['skipped_reason'] as String?,
+      loggedAt: map['logged_at'] != null ? DateTime.parse(map['logged_at'] as String) : null,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is HabitLog &&
+        other.id == id &&
+        other.habitId == habitId &&
+        other.userId == userId &&
+        DateHelper.isSameDay(other.date, date) &&
+        other.status == status &&
+        other.reason == reason;
+  }
+
+  @override
+  int get hashCode => Object.hash(id, habitId, userId, date.year, date.month, date.day, status, reason);
 }

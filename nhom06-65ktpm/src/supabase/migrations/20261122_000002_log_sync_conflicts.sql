@@ -16,12 +16,14 @@ create table if not exists public.sync_receipts (
 alter table public.sync_receipts enable row level security;
 revoke all on public.sync_receipts from anon, authenticated;
 
-revoke insert, update, delete on
+-- During the rollout, repositories still write directly. Keep RLS as the
+-- authorization boundary until every log repository calls apply_log_sync.
+grant insert, update, delete on
   public.habit_logs,
   public.activity_sessions,
   public.meal_logs,
   public.sleep_logs
-from anon, authenticated;
+to authenticated;
 
 create or replace function public.apply_log_sync(
   p_operation_id uuid,
@@ -64,6 +66,10 @@ begin
     raise exception 'Authenticated Firebase UID is required'
       using errcode = '28000';
   end if;
+
+  insert into public.profiles (owner_uid)
+  values (v_owner_uid)
+  on conflict (owner_uid) do nothing;
 
   if p_entity_type is null or p_entity_type not in (
     'habit_log', 'activity_session', 'meal_log', 'sleep_log'

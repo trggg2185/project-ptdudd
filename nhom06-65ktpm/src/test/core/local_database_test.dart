@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:healthylife/core/local_database.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -73,6 +75,53 @@ void main() {
       expect(
         await localDatabase.getPendingChanges('firebase-user-a'),
         hasLength(1),
+      );
+    },
+  );
+
+  test('coalesces repeated offline edits into one pending operation', () async {
+    await localDatabase.upsertRecord(
+      ownerUid: 'firebase-user-a',
+      entityType: 'habit_log',
+      recordId: 'log-1',
+      payload: {'result': 'started'},
+    );
+    await localDatabase.upsertRecord(
+      ownerUid: 'firebase-user-a',
+      entityType: 'habit_log',
+      recordId: 'log-1',
+      payload: {'result': 'completed'},
+    );
+
+    final pending = await localDatabase.getPendingChanges('firebase-user-a');
+    expect(pending, hasLength(1));
+    expect(pending.single['payload_json'], jsonEncode({'result': 'completed'}));
+  });
+
+  test(
+    'removes an unsynced create from the queue when deleted offline',
+    () async {
+      await localDatabase.upsertRecord(
+        ownerUid: 'firebase-user-a',
+        entityType: 'habit_log',
+        recordId: 'log-1',
+        payload: {'result': 'completed'},
+      );
+
+      await localDatabase.deleteRecord(
+        ownerUid: 'firebase-user-a',
+        entityType: 'habit_log',
+        recordId: 'log-1',
+      );
+
+      expect(await localDatabase.getPendingChanges('firebase-user-a'), isEmpty);
+      expect(
+        await localDatabase.getRecord(
+          ownerUid: 'firebase-user-a',
+          entityType: 'habit_log',
+          recordId: 'log-1',
+        ),
+        isNull,
       );
     },
   );

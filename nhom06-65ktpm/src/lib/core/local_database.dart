@@ -68,12 +68,24 @@ class LocalDatabase {
     String? operationId,
   }) async {
     _validateIdentity(ownerUid, entityType, recordId);
-    final id = operationId ?? _uuid.v4();
     final encodedPayload = jsonEncode(payload);
     final now = DateTime.now().toUtc().toIso8601String();
     final db = await database;
 
     await db.transaction((txn) async {
+      final pending = await txn.query(
+        'sync_queue',
+        where: '''
+          owner_uid = ? AND entity_type = ? AND record_id = ?
+        ''',
+        whereArgs: [ownerUid, entityType, recordId],
+        limit: 1,
+        orderBy: 'created_at',
+      );
+      final id = pending.isEmpty
+          ? (operationId ?? _uuid.v4())
+          : pending.single['operation_id']! as String;
+
       await txn.insert('local_records', {
         'owner_uid': ownerUid,
         'entity_type': entityType,
@@ -82,20 +94,44 @@ class LocalDatabase {
         'server_version': baseVersion,
         'updated_at': now,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
-      await _enqueue(
-        txn,
-        operationId: id,
-        ownerUid: ownerUid,
-        entityType: entityType,
-        recordId: recordId,
-        operation: 'upsert',
-        payloadJson: encodedPayload,
-        baseVersion: baseVersion,
-        createdAt: now,
-      );
+      if (pending.isEmpty) {
+        await _enqueue(
+          txn,
+          operationId: id,
+          ownerUid: ownerUid,
+          entityType: entityType,
+          recordId: recordId,
+          operation: 'upsert',
+          payloadJson: encodedPayload,
+          baseVersion: baseVersion,
+          createdAt: now,
+        );
+      } else {
+        final existing = pending.single;
+        await txn.update(
+          'sync_queue',
+          {
+            'operation': 'upsert',
+            'payload_json': encodedPayload,
+            'base_version': existing['base_version'] ?? baseVersion,
+            'created_at': existing['created_at'],
+            'attempt_count': 0,
+            'last_error_code': null,
+          },
+          where: 'operation_id = ?',
+          whereArgs: [id],
+        );
+      }
     });
 
-    return id;
+    final rows = await db.query(
+      'sync_queue',
+      columns: ['operation_id'],
+      where: 'owner_uid = ? AND entity_type = ? AND record_id = ?',
+      whereArgs: [ownerUid, entityType, recordId],
+      limit: 1,
+    );
+    return rows.single['operation_id']! as String;
   }
 
   Future<String> deleteRecord({
@@ -106,30 +142,76 @@ class LocalDatabase {
     String? operationId,
   }) async {
     _validateIdentity(ownerUid, entityType, recordId);
-    final id = operationId ?? _uuid.v4();
     final now = DateTime.now().toUtc().toIso8601String();
     final db = await database;
 
     await db.transaction((txn) async {
+      final pending = await txn.query(
+        'sync_queue',
+        where: '''
+          owner_uid = ? AND entity_type = ? AND record_id = ?
+        ''',
+        whereArgs: [ownerUid, entityType, recordId],
+        limit: 1,
+        orderBy: 'created_at',
+      );
+      final id = pending.isEmpty
+          ? (operationId ?? _uuid.v4())
+          : pending.single['operation_id']! as String;
+
       await txn.delete(
         'local_records',
         where: 'owner_uid = ? AND entity_type = ? AND record_id = ?',
         whereArgs: [ownerUid, entityType, recordId],
       );
-      await _enqueue(
-        txn,
-        operationId: id,
-        ownerUid: ownerUid,
-        entityType: entityType,
-        recordId: recordId,
-        operation: 'delete',
-        payloadJson: null,
-        baseVersion: baseVersion,
-        createdAt: now,
-      );
+      if (pending.isNotEmpty &&
+          pending.single['operation'] == 'upsert' &&
+          pending.single['base_version'] == null) {
+        await txn.delete(
+          'sync_queue',
+          where: 'operation_id = ?',
+          whereArgs: [id],
+        );
+      } else if (pending.isNotEmpty) {
+        final existing = pending.single;
+        await txn.update(
+          'sync_queue',
+          {
+            'operation': 'delete',
+            'payload_json': null,
+            'base_version': existing['base_version'] ?? baseVersion,
+            'created_at': existing['created_at'],
+            'attempt_count': 0,
+            'last_error_code': null,
+          },
+          where: 'operation_id = ?',
+          whereArgs: [id],
+        );
+      } else if (baseVersion != null) {
+        await _enqueue(
+          txn,
+          operationId: id,
+          ownerUid: ownerUid,
+          entityType: entityType,
+          recordId: recordId,
+          operation: 'delete',
+          payloadJson: null,
+          baseVersion: baseVersion,
+          createdAt: now,
+        );
+      }
     });
 
-    return id;
+    final rows = await db.query(
+      'sync_queue',
+      columns: ['operation_id'],
+      where: 'owner_uid = ? AND entity_type = ? AND record_id = ?',
+      whereArgs: [ownerUid, entityType, recordId],
+      limit: 1,
+    );
+    return rows.isEmpty
+        ? (operationId ?? _uuid.v4())
+        : rows.single['operation_id']! as String;
   }
 
   Future<Map<String, Object?>?> getRecord({

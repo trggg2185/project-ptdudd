@@ -2,7 +2,7 @@
 
 ## Bắt đầu tại đây — dành cho thành viên và AI của thành viên
 
-**Issue #1 bổ sung màn hình đăng nhập và phiên Firebase trên Android/Web.** Ứng dụng mở màn hình đăng nhập khi chưa có phiên và hiển thị quyền truy cập Supabase sau khi đăng nhập. Schema, RLS, Storage và các màn hình nghiệp vụ thuộc các issue tiếp theo.
+**Issue #1 bổ sung màn hình đăng nhập và phiên Firebase trên Android/Web.** Đồng thời, nhánh `feature/nhom06/habits` đã hoàn thiện chức năng **Thói quen, Check-in và Chuỗi kỷ luật (Streak)** theo Issue #4. Ứng dụng hỗ trợ kết nối Supabase qua `SupabaseHabitRepository` hoặc chế độ **Demo ngoại tuyến (In-Memory)** khi chạy độc lập, có xử lý lỗi đồng bộ minh bạch (`HabitSyncException`), chặn check-in tương lai, lưu lịch sử chu kỳ tránh sửa streak quá khứ, và lưu danh sách khoảng thời gian tạm dừng (`pauseHistory`) bảo toàn chuỗi streak khi tiếp tục lại. Các phần Profile/Planner/Activity/Nutrition do thành viên phụ trách tiếp tục hoàn thiện theo phân công.
 
 AI đọc [AGENTS.md](AGENTS.md) trước khi sửa mã, rồi đọc issue được giao và các phần liên quan trong README. Các mục 1–11 bên dưới là **đặc tả/kế hoạch**, không phải danh sách tính năng đã hoàn thành.
 
@@ -65,6 +65,8 @@ flutter run -d chrome --web-port=5000
 Android: chạy `flutter devices`, bật USB debugging nếu dùng điện thoại, rồi `flutter run -d <device-id>`. Android Studio cần JDK/SDK tương thích với cấu hình Gradle có sẵn; chạy theo chẩn đoán flutter doctor, không commit đường dẫn máy vào `android/local.properties`.
 
 **Khi chạy lần đầu**, HealthyLife hiển thị nút đăng nhập bằng Email/Password hoặc Google. Nếu Firebase đã lưu phiên trên thiết bị/trình duyệt, ứng dụng mở màn hình **Phiên đăng nhập**. Chọn **Đăng xuất** để thử tài khoản khác. Thành viên làm hồ sơ và lịch tập nối màn hình của mình vào sau phiên đăng nhập khi tích hợp.
+
+**Module Thói quen & Kỷ luật:** Khi chạy ứng dụng (hoặc chạy độc lập với `habitRepository`), màn hình quản lý thói quen (`HabitsPage`) sẽ hiển thị trực quan cùng bộ dữ liệu mẫu (`SampleHabitsFixture`). Bạn có thể thử nghiệm đầy đủ các tính năng: thêm/sửa/xóa thói quen, chọn các chu kỳ lặp khác nhau, check-in hoàn thành, bỏ qua có lý do, tạm dừng/tiếp tục thói quen (bảo toàn chuỗi kỷ luật), xem tiến độ ngày, và xem chuỗi kỷ luật (Streak). Chạy kiểm thử tự động toàn module bằng lệnh: `flutter test --no-pub`. Giới hạn backend: Module chạy ở chế độ **Demo ngoại tuyến (In-Memory)** khi Supabase chưa khởi tạo; dữ liệu tạm thời này nằm trên RAM và sẽ làm mới khi khởi động lại ứng dụng. Khi backend Supabase được khởi tạo (`Supabase.instance.isInitialized == true`), `SupabaseHabitRepository` sẽ tự động kết nối, đồng bộ hai chiều và báo lỗi rõ ràng qua `HabitSyncException` nếu gặp sự cố mạng hoặc quyền truy cập.
 
 Kiểm tra trên máy nhóm trưởng đã qua `flutter analyze --no-pub`, `flutter build web --no-pub` và `flutter build apk --debug --no-pub`. APK debug được tạo cục bộ trong `build/app/outputs/flutter-apk/`.
 

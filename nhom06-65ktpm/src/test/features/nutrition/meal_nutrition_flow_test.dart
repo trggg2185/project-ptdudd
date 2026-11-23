@@ -152,7 +152,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('Đã lưu nhật ký bữa ăn "Cơm trưa tự nấu có rau xanh".'),
+        find.text(
+          'Đã lưu nhật ký bữa ăn "Cơm trưa tự nấu có rau xanh" kèm ảnh riêng tư.',
+        ),
         findsOneWidget,
       );
       final listScrollable = find.byType(Scrollable).first;

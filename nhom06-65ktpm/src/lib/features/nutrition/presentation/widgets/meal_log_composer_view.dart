@@ -10,7 +10,8 @@ import '../../domain/usecases/meal_nutrition_usecase.dart';
 /// Màn hình/widget ghi nhật ký bữa ăn độc lập (không chỉnh `main.dart`):
 /// - Gợi ý & đổi món theo hồ sơ người dùng từ module `recommendations`.
 /// - Cho người dùng tự sửa và xác nhận tên món ăn thực tế.
-/// - Chụp/chọn ảnh, kiểm tra định dạng/kích thước, nén & xóa EXIF ngay ở client trước khi lưu.
+/// - Chụp/chọn ảnh, kiểm tra định dạng/kích thước, nén & xóa EXIF ngay ở client.
+/// - Fallback nhập tay khi từ chối quyền/ảnh lỗi và giữ nhật ký + ảnh chờ khi mất mạng.
 class MealLogComposerView extends StatefulWidget {
   final String ownerUid;
   final RecommendationProfile profile;
@@ -37,6 +38,7 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
   MealSuggestionSession? _session;
   PreparedMealPhoto? _preparedPhoto;
   List<MealLog> _history = const [];
+  int _pendingPhotoCount = 0;
   bool _loading = true;
   bool _saving = false;
   String? _statusMessage;
@@ -63,10 +65,14 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
     final history = await widget.useCase.getMealHistory(
       ownerUid: widget.ownerUid,
     );
+    final pendingCount = await widget.useCase.countPendingPhotos(
+      ownerUid: widget.ownerUid,
+    );
     if (!mounted) return;
     setState(() {
       _session = session;
       _history = history;
+      _pendingPhotoCount = pendingCount;
       _loading = false;
       final current = session.currentOption;
       if (current != null && _mealNameController.text.trim().isEmpty) {
@@ -89,28 +95,44 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
   }
 
   Future<void> _pickPhoto(MealPhotoSource source) async {
-    try {
-      final picked = await widget.useCase.captureOrPickPhoto(source);
-      if (!mounted || picked == null) return;
-      final prepared = await widget.useCase.preparePhoto(picked);
-      if (!mounted) return;
-      setState(() {
-        _preparedPhoto = prepared;
+    final outcome = await widget.useCase.pickAndPreparePhoto(source);
+    if (!mounted || outcome.cancelled) return;
+    setState(() {
+      if (outcome.hasPhoto) {
+        _preparedPhoto = outcome.preparedPhoto;
         _statusMessage = null;
-      });
-    } on MealPhotoException catch (error) {
+      } else {
+        _preparedPhoto = null;
+        _statusMessage = outcome.userMessage;
+      }
+    });
+  }
+
+  Future<void> _retryPendingPhotos() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      final uploaded = await widget.useCase.retryPendingPhotoUploads(
+        ownerUid: widget.ownerUid,
+      );
+      final updatedHistory = await widget.useCase.getMealHistory(
+        ownerUid: widget.ownerUid,
+      );
+      final remaining = await widget.useCase.countPendingPhotos(
+        ownerUid: widget.ownerUid,
+      );
       if (!mounted) return;
       setState(() {
-        _preparedPhoto = null;
-        _statusMessage = error.message;
+        _history = updatedHistory;
+        _pendingPhotoCount = remaining;
+        _statusMessage = uploaded > 0
+            ? 'Đã đồng bộ $uploaded ảnh bữa ăn đang chờ.'
+            : 'Chưa thể đồng bộ ảnh đang chờ, dữ liệu vẫn an toàn ở cục bộ.';
       });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _preparedPhoto = null;
-        _statusMessage =
-            'Không thể xử lý ảnh bữa ăn. Bạn vẫn có thể nhập tay tên món để lưu nhật ký.';
-      });
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
     }
   }
 
@@ -128,7 +150,7 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
           ? currentOption
           : null;
 
-      await widget.useCase.confirmAndLogMeal(
+      final result = await widget.useCase.saveMealLogResilient(
         ownerUid: widget.ownerUid,
         confirmedMealName: confirmedName,
         mealType: widget.mealType,
@@ -139,22 +161,27 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
       final updatedHistory = await widget.useCase.getMealHistory(
         ownerUid: widget.ownerUid,
       );
+      final pendingCount = await widget.useCase.countPendingPhotos(
+        ownerUid: widget.ownerUid,
+      );
       if (!mounted) return;
       setState(() {
         _history = updatedHistory;
+        _pendingPhotoCount = pendingCount;
         _preparedPhoto = null;
         _noteController.clear();
-        _statusMessage = 'Đã lưu nhật ký bữa ăn "$confirmedName".';
+        _statusMessage = result.userMessage;
       });
     } on MealPhotoException catch (error) {
       if (!mounted) return;
       setState(() {
         _statusMessage = error.message;
       });
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
-        _statusMessage = 'Không thể lưu nhật ký bữa ăn: $error';
+        _statusMessage =
+            'Không thể hoàn tất thao tác. Vui lòng thử lưu lại nhật ký.';
       });
     } finally {
       if (mounted) {
@@ -296,6 +323,13 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
                 onPressed: _saving ? null : _saveMealLog,
                 child: Text(_saving ? 'Đang lưu...' : 'Lưu nhật ký bữa ăn'),
               ),
+              if (_pendingPhotoCount > 0) ...[
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: _saving ? null : _retryPendingPhotos,
+                  child: Text('Thử đồng bộ $_pendingPhotoCount ảnh đang chờ'),
+                ),
+              ],
               if (_statusMessage case final message?) ...[
                 const SizedBox(height: 8),
                 Text(message),
@@ -317,15 +351,21 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
                 title: Text(log.mealName),
-                subtitle: Text(
-                  log.hasPhoto
-                      ? 'Ảnh riêng tư: ${log.imagePath}'
-                      : 'Ghi nhận nhập tay (không có ảnh)',
-                ),
+                subtitle: Text(_subtitleForLog(log)),
               ),
             ),
           ),
       ],
     );
+  }
+
+  static String _subtitleForLog(MealLog log) {
+    if (log.hasPhoto) {
+      return 'Ảnh riêng tư: ${log.imagePath}';
+    }
+    if (log.photoUploadStatus == MealPhotoUploadStatus.pendingLocal) {
+      return 'Đã lưu cục bộ • Ảnh đang chờ đồng bộ khi có mạng';
+    }
+    return 'Ghi nhận nhập tay (không có ảnh)';
   }
 }

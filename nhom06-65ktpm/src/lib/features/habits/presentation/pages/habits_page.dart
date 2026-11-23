@@ -212,8 +212,8 @@ class _HabitsPageState extends State<HabitsPage> {
 
   Widget _buildDateSelector() {
     final now = DateTime.now();
-    final yesterday = now.subtract(const Duration(days: 1));
-    final tomorrow = now.add(const Duration(days: 1));
+    final yesterday = DateHelper.shiftDays(now, -1);
+    final tomorrow = DateHelper.shiftDays(now, 1);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),

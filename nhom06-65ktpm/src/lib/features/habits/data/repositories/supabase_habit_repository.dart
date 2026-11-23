@@ -81,7 +81,12 @@ class SupabaseHabitRepository implements HabitRepository {
   Future<void> saveHabit(Habit habit) async {
     if (_isOnline) {
       try {
-        await _client!.from('habits').upsert(habit.toSupabaseMap());
+        await _client!.from('profiles').upsert(
+          {'owner_uid': habit.ownerUid},
+          onConflict: 'owner_uid',
+          ignoreDuplicates: true,
+        );
+        await _client.from('habits').upsert(habit.toSupabaseMap());
         await _fallbackRepo.saveHabit(habit);
       } catch (e) {
         throw HabitSyncException('Không thể lưu thói quen "${habit.name}" lên Supabase: $e', cause: e);
@@ -109,7 +114,7 @@ class SupabaseHabitRepository implements HabitRepository {
   Future<void> toggleHabitActive(String id, bool isActive) async {
     if (_isOnline) {
       try {
-        final now = DateTime.now();
+        final now = DateTime.now().toUtc();
         await _client!.from('habits').update({
           'is_active': isActive,
           'updated_at': now.toIso8601String(),
@@ -204,12 +209,15 @@ class SupabaseHabitRepository implements HabitRepository {
   Future<void> recordCheckIn(HabitLog log) async {
     if (_isOnline) {
       try {
-        // Upsert dựa trên ràng buộc unique: (owner_uid, habit_id, local_date)
-        await _client!.from('habit_logs').upsert(
-              log.toSupabaseMap(),
-              onConflict: 'owner_uid,habit_id,local_date',
-            );
+        await _client!.from('habit_logs').insert(log.toSupabaseMap());
         await _fallbackRepo.recordCheckIn(log);
+      } on PostgrestException catch (error) {
+        if (error.code == '23505') {
+          throw HabitSyncException(
+            'Ngày này đã được ghi nhận. Tải lại dữ liệu để xem kết quả.',
+          );
+        }
+        throw HabitSyncException('Lỗi ghi nhận check-in lên Supabase.', cause: error);
       } catch (e) {
         throw HabitSyncException('Lỗi ghi nhận check-in lên Supabase: $e', cause: e);
       }

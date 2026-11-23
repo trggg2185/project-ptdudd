@@ -288,13 +288,14 @@ begin
        and p_entity_type = 'habit_log'
        and p_payload ? 'habit_id'
        and p_payload ? 'local_date' then
-      execute
-        'select target.version, to_jsonb(target)
+      execute $lookup$
+        select target.version, to_jsonb(target)
          from public.habit_logs as target
          where target.owner_uid = $1
            and target.habit_id = ($2->>'habit_id')::uuid
            and target.local_date = ($2->>'local_date')::date
-         limit 1'
+         limit 1
+        $lookup$
       into v_server_version, v_server_record
       using v_owner_uid, p_payload;
     end if;

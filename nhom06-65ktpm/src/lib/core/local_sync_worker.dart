@@ -57,7 +57,7 @@ abstract interface class SyncTransport {
 }
 
 class SupabaseSyncTransport implements SyncTransport {
-  SupabaseSyncTransport(this._client, {this.currentOwnerUid});
+  SupabaseSyncTransport(this._client, {required this.currentOwnerUid});
 
   static const _logEntityTypes = {
     'habit_log',
@@ -67,7 +67,7 @@ class SupabaseSyncTransport implements SyncTransport {
   };
 
   final SupabaseClient _client;
-  final String? Function()? currentOwnerUid;
+  final String? Function() currentOwnerUid;
 
   @override
   Future<SyncApplyResult> apply({
@@ -79,8 +79,7 @@ class SupabaseSyncTransport implements SyncTransport {
     required Map<String, Object?>? payload,
     required int? baseVersion,
   }) async {
-    final resolvedOwnerUid = currentOwnerUid?.call();
-    if (resolvedOwnerUid != null && resolvedOwnerUid != ownerUid) {
+    if (ownerUid.isEmpty || currentOwnerUid() != ownerUid) {
       throw StateError('Sync UID does not match the authenticated user.');
     }
     if (!_logEntityTypes.contains(entityType)) {
@@ -97,6 +96,7 @@ class SupabaseSyncTransport implements SyncTransport {
           'p_operation': operation,
           'p_payload': payload,
           'p_base_version': baseVersion,
+          'p_expected_owner_uid': ownerUid,
         },
       );
       if (response is! List || response.length != 1) {

@@ -147,6 +147,36 @@ void main() {
     expect(auth.googleAttempts, 2);
     expect(find.text('Phiên đăng nhập'), findsOneWidget);
   });
+
+  testWidgets('habit access follows the claim and the current Firebase UID', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AuthGate(
+          auth: auth,
+          habitsPageBuilder: (session) => Scaffold(body: Text(session.uid)),
+        ),
+      ),
+    );
+    auth.changes.add(const AuthSession(uid: 'account-a'));
+    await tester.pumpAndSettle();
+    final button = find.widgetWithText(FilledButton, 'Mở thói quen');
+    expect(tester.widget<FilledButton>(button).onPressed, isNull);
+
+    auth.dataAccess = true;
+    await tester.tap(find.text('Kiểm tra lại quyền'));
+    await tester.pumpAndSettle();
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(find.text('account-a'), findsOneWidget);
+
+    auth.dataAccess = false;
+    auth.changes.add(const AuthSession(uid: 'account-b'));
+    await tester.pumpAndSettle();
+    expect(find.text('account-a'), findsNothing);
+    expect(tester.widget<FilledButton>(button).onPressed, isNull);
+  });
 }
 
 class _TestAuth implements AuthRepository {

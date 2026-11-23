@@ -1,4 +1,5 @@
 import '../entities/meal_photo_attachment.dart';
+import '../entities/meal_photo_policy.dart';
 
 /// Interface lưu trữ ảnh bữa ăn trong bucket riêng tư `meal-images`
 /// với đường dẫn bắt buộc `<owner_uid>/<file-name>` để khớp RLS Storage.
@@ -8,7 +9,7 @@ abstract interface class MealPhotoStorage {
   Future<StoredMealPhoto> uploadPrivatePhoto({
     required String ownerUid,
     required String logId,
-    required SelectedMealPhoto photo,
+    required PreparedMealPhoto photo,
   });
 
   Future<String?> createShortLivedSignedUrl({

@@ -4,26 +4,30 @@ import '../../../recommendations/domain/entities/recommendation_profile.dart';
 import '../../../recommendations/domain/usecases/get_recommendations_usecase.dart';
 import '../entities/meal_log.dart';
 import '../entities/meal_photo_attachment.dart';
+import '../entities/meal_photo_policy.dart';
 import '../entities/meal_suggestion_session.dart';
 import '../repositories/meal_log_repository.dart';
 import '../repositories/meal_photo_picker.dart';
 import '../repositories/meal_photo_storage.dart';
+import '../services/meal_photo_processor.dart';
 
 /// Use case điều phối luồng cốt lõi của nhật ký bữa ăn:
 /// 1. Gợi ý & đổi món theo hồ sơ thông qua [GetRecommendationsUseCase] (Issue #10).
-/// 2. Chụp/chọn ảnh bữa ăn qua [MealPhotoPicker].
+/// 2. Chụp/chọn ảnh bữa ăn qua [MealPhotoPicker], kiểm tra/nén/xóa EXIF qua [MealPhotoProcessor].
 /// 3. Lưu nhật ký với tên món do người dùng xác nhận và đường dẫn ảnh riêng tư.
 class MealNutritionUseCase {
   final GetRecommendationsUseCase recommendationsUseCase;
   final MealLogRepository mealLogRepository;
   final MealPhotoPicker photoPicker;
   final MealPhotoStorage photoStorage;
+  final MealPhotoProcessor photoProcessor;
 
   const MealNutritionUseCase({
     required this.recommendationsUseCase,
     required this.mealLogRepository,
     required this.photoPicker,
     required this.photoStorage,
+    this.photoProcessor = const DefaultMealPhotoProcessor(),
   });
 
   /// Lấy danh sách món gợi ý và lựa chọn thay thế hợp lệ theo hồ sơ người dùng.
@@ -60,13 +64,19 @@ class MealNutritionUseCase {
     return photoPicker.pickPhoto(source);
   }
 
-  /// Ghi nhật ký bữa ăn với tên món do người dùng xác nhận và ảnh (nếu có).
+  /// Kiểm tra định dạng/kích thước ở client, nén ảnh và xóa sạch EXIF/vị trí trước upload.
+  Future<PreparedMealPhoto> preparePhoto(SelectedMealPhoto photo) {
+    return photoProcessor.prepare(photo);
+  }
+
+  /// Ghi nhật ký bữa ăn với tên món do người dùng xác nhận và ảnh đã xử lý an toàn (nếu có).
   Future<MealLog> confirmAndLogMeal({
     required String ownerUid,
     required String confirmedMealName,
     String mealType = 'lunch',
     MealCatalogItem? selectedCatalogMeal,
     SelectedMealPhoto? selectedPhoto,
+    PreparedMealPhoto? preparedPhoto,
     DateTime? consumedAt,
     String? note,
   }) async {
@@ -92,11 +102,14 @@ class MealNutritionUseCase {
     final logId = IdGenerator.generateUuid();
     StoredMealPhoto? storedPhoto;
 
-    if (selectedPhoto != null) {
+    final photoToUpload = preparedPhoto ??
+        (selectedPhoto == null ? null : await preparePhoto(selectedPhoto));
+
+    if (photoToUpload != null) {
       storedPhoto = await photoStorage.uploadPrivatePhoto(
         ownerUid: trimmedOwner,
         logId: logId,
-        photo: selectedPhoto,
+        photo: photoToUpload,
       );
     }
 

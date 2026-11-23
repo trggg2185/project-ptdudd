@@ -3,13 +3,14 @@ import 'package:flutter/material.dart';
 import '../../../recommendations/domain/entities/recommendation_profile.dart';
 import '../../domain/entities/meal_log.dart';
 import '../../domain/entities/meal_photo_attachment.dart';
+import '../../domain/entities/meal_photo_policy.dart';
 import '../../domain/entities/meal_suggestion_session.dart';
 import '../../domain/usecases/meal_nutrition_usecase.dart';
 
 /// Màn hình/widget ghi nhật ký bữa ăn độc lập (không chỉnh `main.dart`):
 /// - Gợi ý & đổi món theo hồ sơ người dùng từ module `recommendations`.
 /// - Cho người dùng tự sửa và xác nhận tên món ăn thực tế.
-/// - Cho chụp ảnh từ camera hoặc chọn ảnh từ thư viện, rồi lưu nhật ký.
+/// - Chụp/chọn ảnh, kiểm tra định dạng/kích thước, nén & xóa EXIF ngay ở client trước khi lưu.
 class MealLogComposerView extends StatefulWidget {
   final String ownerUid;
   final RecommendationProfile profile;
@@ -34,7 +35,7 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
   final _noteController = TextEditingController();
 
   MealSuggestionSession? _session;
-  SelectedMealPhoto? _selectedPhoto;
+  PreparedMealPhoto? _preparedPhoto;
   List<MealLog> _history = const [];
   bool _loading = true;
   bool _saving = false;
@@ -88,12 +89,29 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
   }
 
   Future<void> _pickPhoto(MealPhotoSource source) async {
-    final picked = await widget.useCase.captureOrPickPhoto(source);
-    if (!mounted || picked == null) return;
-    setState(() {
-      _selectedPhoto = picked;
-      _statusMessage = null;
-    });
+    try {
+      final picked = await widget.useCase.captureOrPickPhoto(source);
+      if (!mounted || picked == null) return;
+      final prepared = await widget.useCase.preparePhoto(picked);
+      if (!mounted) return;
+      setState(() {
+        _preparedPhoto = prepared;
+        _statusMessage = null;
+      });
+    } on MealPhotoException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _preparedPhoto = null;
+        _statusMessage = error.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _preparedPhoto = null;
+        _statusMessage =
+            'Không thể xử lý ảnh bữa ăn. Bạn vẫn có thể nhập tay tên món để lưu nhật ký.';
+      });
+    }
   }
 
   Future<void> _saveMealLog() async {
@@ -115,7 +133,7 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
         confirmedMealName: confirmedName,
         mealType: widget.mealType,
         selectedCatalogMeal: matchedCatalog,
-        selectedPhoto: _selectedPhoto,
+        preparedPhoto: _preparedPhoto,
         note: _noteController.text,
       );
       final updatedHistory = await widget.useCase.getMealHistory(
@@ -124,9 +142,14 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
       if (!mounted) return;
       setState(() {
         _history = updatedHistory;
-        _selectedPhoto = null;
+        _preparedPhoto = null;
         _noteController.clear();
         _statusMessage = 'Đã lưu nhật ký bữa ăn "$confirmedName".';
+      });
+    } on MealPhotoException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _statusMessage = error.message;
       });
     } catch (error) {
       if (!mounted) return;
@@ -252,20 +275,18 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
                   ),
                 ],
               ),
-              if (_selectedPhoto case final photo?) ...[
+              if (_preparedPhoto case final photo?) ...[
                 const SizedBox(height: 8),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text('Ảnh đính kèm: ${photo.fileName}'),
                   subtitle: Text(
-                    photo.source == MealPhotoSource.camera
-                        ? 'Nguồn: Camera (${photo.sizeBytes} bytes)'
-                        : 'Nguồn: Thư viện (${photo.sizeBytes} bytes)',
+                    '${photo.source == MealPhotoSource.camera ? 'Camera' : 'Thư viện'} • ${photo.sizeBytes} bytes • Đã xóa EXIF',
                   ),
                   trailing: TextButton(
                     onPressed: _saving
                         ? null
-                        : () => setState(() => _selectedPhoto = null),
+                        : () => setState(() => _preparedPhoto = null),
                     child: const Text('Bỏ ảnh'),
                   ),
                 ),

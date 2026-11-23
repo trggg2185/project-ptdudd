@@ -2,7 +2,7 @@
 
 ## Bắt đầu tại đây — dành cho thành viên và AI của thành viên
 
-**Issue #1 bổ sung màn hình đăng nhập và phiên Firebase trên Android/Web.** Đồng thời, nhánh `feature/nhom06/habits` đã hoàn thiện chức năng **Thói quen, Check-in và Chuỗi kỷ luật (Streak)** theo Issue #4. Ứng dụng hỗ trợ kết nối Supabase qua `SupabaseHabitRepository` hoặc chế độ **Demo ngoại tuyến (In-Memory)** khi chạy độc lập, có xử lý lỗi đồng bộ minh bạch (`HabitSyncException`), chặn check-in tương lai, lưu lịch sử chu kỳ tránh sửa streak quá khứ, và lưu danh sách khoảng thời gian tạm dừng (`pauseHistory`) bảo toàn chuỗi streak khi tiếp tục lại. Các phần Profile/Planner/Activity/Nutrition do thành viên phụ trách tiếp tục hoàn thiện theo phân công.
+**Issue #1 bổ sung màn hình đăng nhập và phiên Firebase trên Android/Web.** Ứng dụng mở màn hình đăng nhập khi chưa có phiên và hiển thị quyền truy cập Supabase sau khi đăng nhập. Nhánh hiện tại cũng đã hoàn thiện chức năng **Thói quen, Check-in và Chuỗi kỷ luật (Streak)** theo Issue #4, hỗ trợ kết nối Supabase qua `SupabaseHabitRepository` hoặc chế độ Demo ngoại tuyến (In-Memory), cùng nền tảng SQLite và sync worker trong `lib/core/`. Migration schema/RLS/Storage và migration sync hiện có trong `supabase/`, nhưng chưa được áp dụng hoặc kiểm chứng đầy đủ trên project cloud. Các phần Profile/Planner/Activity/Nutrition do từng thành viên tiếp tục hoàn thiện theo phân công.
 
 AI đọc [AGENTS.md](AGENTS.md) trước khi sửa mã, rồi đọc issue được giao và các phần liên quan trong README. Các mục 1–11 bên dưới là **đặc tả/kế hoạch**, không phải danh sách tính năng đã hoàn thành.
 
@@ -22,7 +22,7 @@ AI đọc [AGENTS.md](AGENTS.md) trước khi sửa mã, rồi đọc issue đư
 | Supabase URL | `https://vspyxavkdqqlpxodvqvb.supabase.co` | Đã kiểm tra endpoint Auth phản hồi HTTP 200 với publishable key |
 | Supabase client config | [lib/core/backend_config.dart](lib/core/backend_config.dart) | Có URL, publishable key và Firebase Project ID; chỉ là hằng cấu hình |
 | Supabase Third-party Auth | Firebase project `healthy-life-group-6` | Đã xác minh JWT Firebase có role `authenticated` được chấp nhận và chữ ký sai bị từ chối |
-| Dependencies | `firebase_core`, `firebase_auth`, `google_sign_in`, `supabase_flutter` | Phiên bản được khóa trong `pubspec.lock`. Thành viên chạy `flutter pub get` |
+| Dependencies | Firebase/Supabase, `google_sign_in`, `sqflite`, `path`, `uuid` | Đã thêm và khóa phiên bản trong `pubspec.lock`; SQLite dùng trên Android |
 | Android mạng và phiên bản | INTERNET; minSdk 24 | Cấu hình nền tảng, chưa xin camera/GPS |
 
 **Không cần xin key riêng cho mỗi người, tạo project mới hoặc đổi app ID.** Các file trên chứa định danh/cấu hình client, được dùng chung trong kho nhóm. Firebase API key và Supabase publishable key không phải khóa quản trị; bảo mật dữ liệu vẫn phải do xác thực và RLS/Storage policies thực hiện. Không thay bằng `service_role`, `sb_secret_...`, mật khẩu database hoặc private key.
@@ -64,7 +64,7 @@ flutter run -d chrome --web-port=5000
 
 Android: chạy `flutter devices`, bật USB debugging nếu dùng điện thoại, rồi `flutter run -d <device-id>`. Android Studio cần JDK/SDK tương thích với cấu hình Gradle có sẵn; chạy theo chẩn đoán flutter doctor, không commit đường dẫn máy vào `android/local.properties`.
 
-**Khi chạy lần đầu**, HealthyLife hiển thị nút đăng nhập bằng Email/Password hoặc Google. Nếu Firebase đã lưu phiên trên thiết bị/trình duyệt, ứng dụng mở màn hình **Phiên đăng nhập**. Chọn **Đăng xuất** để thử tài khoản khác. Thành viên làm hồ sơ và lịch tập nối màn hình của mình vào sau phiên đăng nhập khi tích hợp.
+**Khi chạy lần đầu**, HealthyLife hiển thị nút đăng nhập bằng Email/Password hoặc Google. Nếu Firebase đã lưu phiên trên thiết bị/trình duyệt, ứng dụng mở màn hình **Phiên đăng nhập**. Chọn **Đăng xuất** để thử tài khoản khác. Chạy được luồng đăng nhập chưa kiểm chứng toàn bộ Firebase Auth, Supabase JWT/RLS hoặc nghiệp vụ. Đã có kiểm thử tập trung cho SQLite và sync worker; hướng dẫn chạy và phạm vi kiểm thử ở mục 4.4. Thành viên làm hồ sơ và lịch tập nối màn hình của mình vào sau phiên đăng nhập khi tích hợp. Các issue khác vẫn cần bổ sung kiểm thử phù hợp, không ghi “tests passed” nếu chưa chạy test.
 
 **Module Thói quen & Kỷ luật:** Khi chạy ứng dụng (hoặc chạy độc lập với `habitRepository`), màn hình quản lý thói quen (`HabitsPage`) sẽ hiển thị trực quan cùng bộ dữ liệu mẫu (`SampleHabitsFixture`). Bạn có thể thử nghiệm đầy đủ các tính năng: thêm/sửa/xóa thói quen, chọn các chu kỳ lặp khác nhau, check-in hoàn thành, bỏ qua có lý do, tạm dừng/tiếp tục thói quen (bảo toàn chuỗi kỷ luật), xem tiến độ ngày, và xem chuỗi kỷ luật (Streak). Chạy kiểm thử tự động toàn module bằng lệnh: `flutter test --no-pub`. Giới hạn backend: Module chạy ở chế độ **Demo ngoại tuyến (In-Memory)** khi Supabase chưa khởi tạo; dữ liệu tạm thời này nằm trên RAM và sẽ làm mới khi khởi động lại ứng dụng. Khi backend Supabase được khởi tạo (`Supabase.instance.isInitialized == true`), `SupabaseHabitRepository` sẽ tự động kết nối, đồng bộ hai chiều và báo lỗi rõ ràng qua `HabitSyncException` nếu gặp sự cố mạng hoặc quyền truy cập.
 
@@ -103,7 +103,7 @@ Nếu chưa có keystore, tạo qua quy trình build debug của Flutter/Android
 
 Khi cấp quyền thử, kiểm tra Firebase Project ID và UID của tài khoản trong Console, rồi từ môi trường quản trị đã xác thực dùng `getAuth().getUser(uid)` và `setCustomUserClaims(uid, {...user.customClaims, role: 'authenticated'})`. Dùng tài khoản thử, giữ thông tin quản trị ở môi trường server và dùng UID lấy từ bản ghi Firebase đã xác minh.
 
-**Hà — issue #7:** schema/migration, RLS và Storage policies còn phải viết, review và áp dụng vào đúng project. Firebase UID **là chuỗi**, nên owner_uid/user_uid dùng TEXT; RLS so với `auth.jwt()->>'sub'`, không ép sang UUID bằng `auth.uid()`. Mọi thao tác đọc/ghi phải có chính sách phù hợp, UPDATE kiểm tra cả dữ liệu cũ lẫn dữ liệu mới; Storage bảo vệ ảnh riêng tư. Không mở policy cho mọi người hoặc tắt RLS để cho app chạy. Chưa tạo bucket/schema trong lần cấu hình chung này.
+**Hà — issue #7:** migration schema/RLS/Storage, migration RPC xử lý xung đột và seed đã có trong `supabase/`; SQLite queue và sync worker đã có trong `lib/core/`. Firebase UID **là chuỗi**, nên owner_uid/user_uid dùng TEXT; RLS so với `auth.jwt()->>'sub'`, không ép sang UUID bằng `auth.uid()`. Các test hiện dùng SQLite FFI và fake transport, chưa xác minh RLS/RPC thực tế. Cần review, áp dụng migrations/seed và kiểm thử trên đúng project trước khi xác nhận deploy. Không mở policy cho mọi người hoặc tắt RLS để cho app chạy.
 
 **Kiểm chứng đã làm:** một tài khoản Firebase tạm đăng ký và đăng nhập thành công bằng Email/Password. Sau khi cấp claim `role: authenticated` và đăng nhập lại, JWT của tài khoản đến được Supabase Data API. Yêu cầu đọc tên bảng thử chưa tồn tại nhận `PGRST205` và JWT có chữ ký sai nhận `401 PGRST301`. Tài khoản thử đã được xóa và phép thử không tạo bảng. Đây là phép thử cấu hình xác thực ở API.
 
@@ -168,7 +168,7 @@ Chưa push, mở/merge PR hoặc deploy cloud cho đến khi tôi yêu cầu.
 - Android trên Windows báo `different roots` hoặc `Could not close incremental caches`: lấy bản mới của nhánh nhóm. Gradle đã tắt biên dịch Kotlin tăng dần để xử lý trường hợp thư mục repo và Pub Cache nằm trên hai ổ đĩa khác nhau. Nếu còn cache build cũ, chạy `flutter clean`, `flutter pub get`, rồi build lại trong `src`. [Tài liệu Kotlin](https://kotlinlang.org/docs/gradle-compilation-and-caches.html#incremental-compilation).
 - Web đăng nhập báo unauthorized-domain: nhóm trưởng kiểm tra authorized domains; không sửa sang Firebase project khác.
 - Supabase 401/403/RLS denied: kiểm tra publishable key/URL, Firebase JWT/claim, third-party integration và policies với Trưởng/Hà. Truy cập chưa được phép phải bị từ chối, không phải lỗi cần chữa bằng cách mở dữ liệu.
-- Chưa có bảng hoặc bucket: đó là phần issue #7 cần triển khai, không phải lý do tự tạo schema riêng trên project khác.
+- Nếu bảng hoặc bucket chưa có trên cloud: kiểm tra trạng thái migration của issue #7 với nhóm; không tự tạo schema riêng trên project khác.
 - iOS/Windows/macOS/Linux: chưa có FirebaseOptions cho các bản native này; ưu tiên Android/Web theo phạm vi đã chốt.
 - Xung đột main.dart, pubspec hoặc migration: trao đổi người phụ trách, giữ thay đổi của nhau; không chọn “accept all ours” hoặc “accept all theirs” mà chưa đọc.
 
@@ -256,7 +256,25 @@ Supabase PostgreSQL lưu dữ liệu nghiệp vụ; Storage bucket riêng tư l�
 
 ### 4.4. Dữ liệu cục bộ, đồng bộ và bảo mật
 
-SQLite lưu nhật ký, lịch đã tải và hàng đợi thay đổi khi mất mạng. Mỗi thay đổi có UUID, owner_uid và thời điểm/phiên bản; retry phải idempotent. Nhật ký độc lập được thêm một lần; sửa cùng bản ghi từ hai thiết bị phải phát hiện xung đột phiên bản và cho chọn, không âm thầm ghi đè. Không cho hai phiên bản lịch cùng được kích hoạt cho một tuần.
+Android dùng plugin `sqflite` (SQLite đi kèm Android, không cần cài server SQLite riêng). `lib/core/local_database.dart` khởi tạo `healthylife.db` trong thư mục database riêng của ứng dụng, tạo bảng `local_records` và `sync_queue`, đồng thời cung cấp thao tác ghi/xóa cục bộ trong transaction. Hàng đợi được phân vùng theo Firebase UID; mỗi thay đổi có UUID để retry cùng operation ID không nhân đôi, và chỉ được lấy/xác nhận theo UID đang đăng nhập. Không gọi các thao tác này trước khi có Firebase UID đã xác thực.
+
+`lib/core/local_sync_worker.dart` gửi queue nhật ký qua RPC `apply_log_sync` trong migration `20261122_000002_log_sync_conflicts.sql`; phải áp dụng migration này lên Supabase trước khi dùng worker. Server lưu receipt theo `(owner_uid, operation_id)`, áp dụng thao tác một lần và trả lại cùng kết quả khi retry. Mỗi thay đổi dùng `base_version`; cập nhật/xóa chỉ thành công nếu server còn đúng phiên bản đó. Khi có conflict, worker ném `SyncConflictException`, giữ queue và không ghi đè. Caller có thể chủ động chọn `keepLocalChanges` (tạo operation UUID mới trên phiên bản server mới) hoặc `acceptServerChange`. Habit log dùng unique key `(owner_uid, habit_id, local_date)` để ngăn hai check-in cho cùng ngày. RPC chỉ hỗ trợ `habit_log`, `activity_session`, `meal_log`, `sleep_log`. Trong giai đoạn chuyển đổi, migration giữ quyền `insert`, `update`, `delete` cho role `authenticated` kèm RLS; các repository mới nên chuyển sang RPC rồi mới thu hồi quyền ghi trực tiếp.
+
+#### Chạy kiểm thử SQLite và sync worker
+
+Từ thư mục `nhom06-65ktpm/src`:
+
+```bash
+flutter pub get
+flutter test test/core
+flutter analyze lib/core test/core
+```
+
+`flutter test test/core` chạy các test database và worker bằng SQLite FFI cùng fake transport; không cần emulator Android, tài khoản hay kết nối Supabase. Các ca hiện có kiểm tra ghi queue khi offline rồi đồng bộ khi transport hoạt động lại bằng cùng operation UUID, coalesce các chỉnh sửa offline, retry idempotent khi server đã nhận nhưng phản hồi bị mất, xử lý conflict, và đổi tài khoản: queue của tài khoản cũ vẫn còn khi flush tài khoản mới và được gửi khi quay lại đúng tài khoản.
+
+Đây là kiểm thử logic cục bộ, **không** mô phỏng mạng hoặc Firebase Auth thật và không chứng minh RPC/RLS chạy trên Supabase. `lib/main.dart` đã khởi tạo backend Firebase/Supabase và điều hướng theo phiên đăng nhập; luồng sync worker vẫn chưa được gắn vào UI và chưa có retry scheduler tự động. `sqflite` trong phần này dành cho Android/iOS; chưa cấu hình adapter lưu trữ Web. Cần truyền callback Firebase UID vào `SupabaseSyncTransport`, tích hợp worker với phiên hiện tại và gọi `flush` khi có mạng/đăng nhập.
+
+So sánh phiên bản và API xử lý chọn bản đã có ở database/worker, nhưng còn cần kiểm thử integration với Supabase thật và gắn các lựa chọn conflict vào UI. Cần tích hợp worker với Firebase UID phiên hiện tại và gọi `flush` khi có mạng/đăng nhập; chưa có retry scheduler tự động. Cần xử lý/xóa cache và queue theo lựa chọn rõ ràng khi đăng xuất; không cho hai phiên bản lịch cùng được kích hoạt cho một tuần.
 
 RLS cô lập dữ liệu theo UID; Storage policies bảo vệ ảnh, URL xem ngắn hạn. Không nhúng service-role key hoặc AI API key vào Flutter. Ảnh không tự chia sẻ; loại thông tin EXIF vị trí trước khi upload. Khi đăng xuất phải hủy nhắc việc của tài khoản, xóa cache riêng và xử lý nhật ký chưa đồng bộ bằng lựa chọn rõ ràng; không đẩy hàng đợi tài khoản cũ dưới tài khoản mới.
 
@@ -464,8 +482,8 @@ src/
 ├── test/                       # Widget tests và kiểm thử callback xác thực
 ├── integration_test/           # Luồng chính, quyền thiết bị và sync
 ├── supabase/
-│   ├── migrations/             # Chưa có schema/policies
-│   ├── seed/                   # Danh mục mẫu có nguồn sẽ biên soạn sau
+│   ├── migrations/             # Schema, RLS và Storage policies; chưa xác nhận deploy
+│   ├── seed/                   # Seed danh mục môn tập và món ăn
 │   └── functions/              # Tác vụ server khi cần triển khai
 ├── pubspec.yaml
 ├── pubspec.lock                # Phiên bản dependencies dùng chung

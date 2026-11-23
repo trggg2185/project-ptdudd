@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'core/backend.dart';
+import 'features/auth/domain/auth_repository.dart';
+import 'features/auth/presentation/auth_gate.dart';
 import 'features/habits/data/repositories/in_memory_habit_repository.dart';
 import 'features/habits/data/repositories/supabase_habit_repository.dart';
 import 'features/habits/domain/repositories/habit_repository.dart';
@@ -28,40 +31,72 @@ HabitRepository resolveHabitRepository({HabitRepository? customRepository}) {
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Khởi tạo repository theo cấu hình môi trường
-  final repository = resolveHabitRepository();
-
-  runApp(HealthyLifeApp(habitRepository: repository));
+  runApp(const HealthyLifeApp());
 }
 
 /// Ứng dụng HealthyLife — Trợ lý kỷ luật và lối sống lành mạnh.
-class HealthyLifeApp extends StatelessWidget {
+class HealthyLifeApp extends StatefulWidget {
   final HabitRepository? habitRepository;
 
   const HealthyLifeApp({super.key, this.habitRepository});
 
   @override
+  State<HealthyLifeApp> createState() => _HealthyLifeAppState();
+}
+
+class _HealthyLifeAppState extends State<HealthyLifeApp> {
+  late final Future<AuthRepository?> _startup = _start();
+
+  Future<AuthRepository?> _start() async {
+    try {
+      return await initializeBackend();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final repo = resolveHabitRepository(customRepository: habitRepository);
+    // Nếu được truyền habitRepository cụ thể (ví dụ trong widget test hoặc demo độc lập):
+    if (widget.habitRepository != null) {
+      return MaterialApp(
+        title: 'HealthyLife - Trợ lý kỷ luật',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff216a52)),
+        ),
+        home: HabitsPage(
+          repository: widget.habitRepository!,
+          currentUserId: 'demo-user-duc-2351170585',
+        ),
+      );
+    }
 
     return MaterialApp(
-      title: 'HealthyLife - Trợ lý kỷ luật',
-      debugShowCheckedModeBanner: false,
+      title: 'HealthyLife',
       theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF00897B), // Teal / Emerald chủ đạo cho sức khỏe và kỷ luật
-          brightness: Brightness.light,
-        ),
-        appBarTheme: const AppBarTheme(
-          centerTitle: true,
-          elevation: 0,
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff216a52)),
+        inputDecorationTheme: const InputDecorationTheme(
+          border: OutlineInputBorder(),
         ),
       ),
-      home: HabitsPage(
-        repository: repo,
-        currentUserId: 'demo-user-duc-2351170585',
+      home: FutureBuilder<AuthRepository?>(
+        future: _startup,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.data case final auth?) return AuthGate(auth: auth);
+
+          // Nếu khởi tạo Firebase/backend không thành công (môi trường không cấu hình, offline demo):
+          return HabitsPage(
+            repository: resolveHabitRepository(),
+            currentUserId: 'demo-user-duc-2351170585',
+          );
+        },
       ),
     );
   }

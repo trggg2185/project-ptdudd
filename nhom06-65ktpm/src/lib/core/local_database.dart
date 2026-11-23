@@ -73,6 +73,16 @@ class LocalDatabase {
     final db = await database;
 
     await db.transaction((txn) async {
+      final local = await txn.query(
+        'local_records',
+        columns: ['server_version'],
+        where: 'owner_uid = ? AND entity_type = ? AND record_id = ?',
+        whereArgs: [ownerUid, entityType, recordId],
+        limit: 1,
+      );
+      final effectiveBaseVersion =
+          baseVersion ??
+          (local.isEmpty ? null : local.single['server_version'] as int?);
       final pending = await txn.query(
         'sync_queue',
         where: '''
@@ -82,16 +92,14 @@ class LocalDatabase {
         limit: 1,
         orderBy: 'created_at',
       );
-      final id = pending.isEmpty
-          ? (operationId ?? _uuid.v4())
-          : pending.single['operation_id']! as String;
+      var id = operationId ?? _uuid.v4();
 
       await txn.insert('local_records', {
         'owner_uid': ownerUid,
         'entity_type': entityType,
         'record_id': recordId,
         'payload_json': encodedPayload,
-        'server_version': baseVersion,
+        'server_version': effectiveBaseVersion,
         'updated_at': now,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
       if (pending.isEmpty) {
@@ -103,24 +111,36 @@ class LocalDatabase {
           recordId: recordId,
           operation: 'upsert',
           payloadJson: encodedPayload,
-          baseVersion: baseVersion,
+          baseVersion: effectiveBaseVersion,
           createdAt: now,
         );
       } else {
         final existing = pending.single;
-        await txn.update(
-          'sync_queue',
-          {
-            'operation': 'upsert',
-            'payload_json': encodedPayload,
-            'base_version': existing['base_version'] ?? baseVersion,
-            'created_at': existing['created_at'],
-            'attempt_count': 0,
-            'last_error_code': null,
-          },
-          where: 'operation_id = ?',
-          whereArgs: [id],
-        );
+        final existingId = existing['operation_id']! as String;
+        final replaySameChange =
+            existing['operation'] == 'upsert' &&
+            existing['payload_json'] == encodedPayload &&
+            existing['base_version'] == effectiveBaseVersion &&
+            (operationId == null || operationId == existingId);
+        if (replaySameChange) {
+          id = existingId;
+        } else {
+          id = operationId ?? _uuid.v4();
+          await txn.update(
+            'sync_queue',
+            {
+              'operation_id': id,
+              'operation': 'upsert',
+              'payload_json': encodedPayload,
+              'base_version': existing['base_version'] ?? effectiveBaseVersion,
+              'created_at': existing['created_at'],
+              'attempt_count': 0,
+              'last_error_code': null,
+            },
+            where: 'operation_id = ?',
+            whereArgs: [existingId],
+          );
+        }
       }
     });
 
@@ -146,6 +166,16 @@ class LocalDatabase {
     final db = await database;
 
     await db.transaction((txn) async {
+      final local = await txn.query(
+        'local_records',
+        columns: ['server_version'],
+        where: 'owner_uid = ? AND entity_type = ? AND record_id = ?',
+        whereArgs: [ownerUid, entityType, recordId],
+        limit: 1,
+      );
+      final effectiveBaseVersion =
+          baseVersion ??
+          (local.isEmpty ? null : local.single['server_version'] as int?);
       final pending = await txn.query(
         'sync_queue',
         where: '''
@@ -155,9 +185,7 @@ class LocalDatabase {
         limit: 1,
         orderBy: 'created_at',
       );
-      final id = pending.isEmpty
-          ? (operationId ?? _uuid.v4())
-          : pending.single['operation_id']! as String;
+      var id = operationId ?? _uuid.v4();
 
       await txn.delete(
         'local_records',
@@ -167,27 +195,42 @@ class LocalDatabase {
       if (pending.isNotEmpty &&
           pending.single['operation'] == 'upsert' &&
           pending.single['base_version'] == null) {
+        final pendingOperationId = pending.single['operation_id']! as String;
         await txn.delete(
           'sync_queue',
           where: 'operation_id = ?',
-          whereArgs: [id],
+          whereArgs: [pendingOperationId],
         );
       } else if (pending.isNotEmpty) {
         final existing = pending.single;
-        await txn.update(
-          'sync_queue',
-          {
-            'operation': 'delete',
-            'payload_json': null,
-            'base_version': existing['base_version'] ?? baseVersion,
-            'created_at': existing['created_at'],
-            'attempt_count': 0,
-            'last_error_code': null,
-          },
-          where: 'operation_id = ?',
-          whereArgs: [id],
-        );
-      } else if (baseVersion != null) {
+        final existingId = existing['operation_id']! as String;
+        final effectiveQueuedBase =
+            existing['base_version'] as int? ?? effectiveBaseVersion;
+        final replaySameChange =
+            existing['operation'] == 'delete' &&
+            existing['payload_json'] == null &&
+            existing['base_version'] == effectiveQueuedBase &&
+            (operationId == null || operationId == existingId);
+        if (replaySameChange) {
+          id = existingId;
+        } else {
+          id = operationId ?? _uuid.v4();
+          await txn.update(
+            'sync_queue',
+            {
+              'operation_id': id,
+              'operation': 'delete',
+              'payload_json': null,
+              'base_version': effectiveQueuedBase,
+              'created_at': existing['created_at'],
+              'attempt_count': 0,
+              'last_error_code': null,
+            },
+            where: 'operation_id = ?',
+            whereArgs: [existingId],
+          );
+        }
+      } else if (effectiveBaseVersion != null) {
         await _enqueue(
           txn,
           operationId: id,
@@ -196,7 +239,7 @@ class LocalDatabase {
           recordId: recordId,
           operation: 'delete',
           payloadJson: null,
-          baseVersion: baseVersion,
+          baseVersion: effectiveBaseVersion,
           createdAt: now,
         );
       }

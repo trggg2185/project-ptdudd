@@ -126,6 +126,55 @@ void main() {
     },
   );
 
+  test('creates a new operation id when a pending payload changes', () async {
+    await localDatabase.upsertRecord(
+      ownerUid: 'firebase-user-a',
+      entityType: 'habit_log',
+      recordId: 'log-1',
+      payload: {'result': 'started'},
+      operationId: 'c0d8c12d-3a4f-4de5-8b5c-1bbdf1f7f2ef',
+    );
+
+    final changedId = await localDatabase.upsertRecord(
+      ownerUid: 'firebase-user-a',
+      entityType: 'habit_log',
+      recordId: 'log-1',
+      payload: {'result': 'completed'},
+    );
+
+    final pending = await localDatabase.getPendingChanges('firebase-user-a');
+    expect(pending, hasLength(1));
+    expect(pending.single['operation_id'], changedId);
+    expect(
+      pending.single['operation_id'],
+      isNot('c0d8c12d-3a4f-4de5-8b5c-1bbdf1f7f2ef'),
+    );
+  });
+
+  test(
+    'uses the stored server version when deleting without baseVersion',
+    () async {
+      await localDatabase.upsertRecord(
+        ownerUid: 'firebase-user-a',
+        entityType: 'meal_log',
+        recordId: 'meal-1',
+        payload: {'meal_name': 'Lunch'},
+        baseVersion: 4,
+      );
+
+      await localDatabase.deleteRecord(
+        ownerUid: 'firebase-user-a',
+        entityType: 'meal_log',
+        recordId: 'meal-1',
+      );
+
+      final pending = await localDatabase.getPendingChanges('firebase-user-a');
+      expect(pending, hasLength(1));
+      expect(pending.single['operation'], 'delete');
+      expect(pending.single['base_version'], 4);
+    },
+  );
+
   test('marks synced changes and removes them from the queue', () async {
     final operationId = await localDatabase.upsertRecord(
       ownerUid: 'firebase-user-a',

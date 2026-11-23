@@ -109,7 +109,14 @@ void main() {
       baseVersion: 1,
       operationId: _id(11),
     );
-    await localDatabase.upsertRecord(
+    await worker.flush('firebase-user-a');
+
+    final deviceBDatabase = LocalDatabase(databasePath: inMemoryDatabasePath);
+    final deviceBWorker = LocalSyncWorker(
+      localDatabase: deviceBDatabase,
+      transport: transport,
+    );
+    await deviceBDatabase.upsertRecord(
       ownerUid: 'firebase-user-a',
       entityType: 'meal_log',
       recordId: _id(10),
@@ -120,19 +127,20 @@ void main() {
 
     SyncConflictException? conflict;
     try {
-      await worker.flush('firebase-user-a');
+      await deviceBWorker.flush('firebase-user-a');
     } on SyncConflictException catch (error) {
       conflict = error;
     }
+    final deviceBPending = await deviceBDatabase.getPendingChanges(
+      'firebase-user-a',
+    );
+    await deviceBDatabase.close();
 
     expect(conflict, isNotNull);
     expect(conflict!.serverVersion, 2);
     expect(conflict.serverRecord?['meal_name'], 'device A');
     expect(transport.records.values.single['meal_name'], 'device A');
-    expect(
-      await localDatabase.getPendingChanges('firebase-user-a'),
-      hasLength(1),
-    );
+    expect(deviceBPending, hasLength(1));
   });
 
   test(

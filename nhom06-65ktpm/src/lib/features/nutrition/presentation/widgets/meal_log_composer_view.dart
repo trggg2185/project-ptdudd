@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../recommendations/domain/entities/recommendation_profile.dart';
+import '../../domain/entities/meal_label_suggestion.dart';
 import '../../domain/entities/meal_log.dart';
 import '../../domain/entities/meal_photo_attachment.dart';
 import '../../domain/entities/meal_photo_policy.dart';
@@ -17,6 +18,7 @@ class MealLogComposerView extends StatefulWidget {
   final RecommendationProfile profile;
   final MealNutritionUseCase useCase;
   final String mealType;
+  final bool aiPhotoLabelConsentGranted;
 
   const MealLogComposerView({
     super.key,
@@ -24,6 +26,7 @@ class MealLogComposerView extends StatefulWidget {
     required this.profile,
     required this.useCase,
     this.mealType = 'lunch',
+    this.aiPhotoLabelConsentGranted = false,
   });
 
   @override
@@ -37,6 +40,7 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
 
   MealSuggestionSession? _session;
   PreparedMealPhoto? _preparedPhoto;
+  MealLabelSuggestionResult? _optionalLabelResult;
   List<MealLog> _history = const [];
   int _pendingPhotoCount = 0;
   bool _loading = true;
@@ -97,14 +101,32 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
   Future<void> _pickPhoto(MealPhotoSource source) async {
     final outcome = await widget.useCase.pickAndPreparePhoto(source);
     if (!mounted || outcome.cancelled) return;
-    setState(() {
-      if (outcome.hasPhoto) {
-        _preparedPhoto = outcome.preparedPhoto;
-        _statusMessage = null;
-      } else {
+    if (!outcome.hasPhoto) {
+      setState(() {
         _preparedPhoto = null;
+        _optionalLabelResult = null;
         _statusMessage = outcome.userMessage;
-      }
+      });
+      return;
+    }
+
+    final prepared = outcome.preparedPhoto!;
+    setState(() {
+      _preparedPhoto = prepared;
+      _optionalLabelResult = null;
+      _statusMessage = null;
+    });
+
+    // AI chỉ là phần mở rộng không chặn luồng cốt lõi; không tự ghi đè tên món người dùng.
+    final labelResult = await widget.useCase
+        .requestOptionalPhotoLabelSuggestions(
+          ownerUid: widget.ownerUid,
+          photo: prepared,
+          aiConsentGranted: widget.aiPhotoLabelConsentGranted,
+        );
+    if (!mounted || _preparedPhoto != prepared) return;
+    setState(() {
+      _optionalLabelResult = labelResult;
     });
   }
 
@@ -169,6 +191,7 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
         _history = updatedHistory;
         _pendingPhotoCount = pendingCount;
         _preparedPhoto = null;
+        _optionalLabelResult = null;
         _noteController.clear();
         _statusMessage = result.userMessage;
       });
@@ -202,6 +225,16 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              MealLabelSuggestionResult.photoSafetyDisclaimer,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
         Text(
           'Gợi ý món ăn theo hồ sơ',
           style: Theme.of(context).textTheme.titleMedium,
@@ -313,10 +346,39 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
                   trailing: TextButton(
                     onPressed: _saving
                         ? null
-                        : () => setState(() => _preparedPhoto = null),
+                        : () => setState(() {
+                            _preparedPhoto = null;
+                            _optionalLabelResult = null;
+                          }),
                     child: const Text('Bỏ ảnh'),
                   ),
                 ),
+                if (_optionalLabelResult case final labelResult?
+                    when labelResult.hasCandidates) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    labelResult.userNotice,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 8,
+                    children: labelResult.candidateLabels
+                        .map(
+                          (label) => ActionChip(
+                            label: Text(label),
+                            onPressed: _saving
+                                ? null
+                                : () {
+                                    setState(() {
+                                      _mealNameController.text = label;
+                                    });
+                                  },
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ],
               ],
               const SizedBox(height: 12),
               FilledButton(

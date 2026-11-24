@@ -2,7 +2,7 @@
 
 ## Bắt đầu tại đây — dành cho thành viên và AI của thành viên
 
-**Bản tích hợp issue #1, #4, #7 và #10.** Trên Android/Web, ứng dụng đăng nhập bằng Firebase và mở màn hình **Thói quen** khi tài khoản có quyền truy cập dữ liệu. SQLite và sync worker nằm trong `lib/core/`. Bộ gợi ý đã có danh mục mẫu, bộ lọc, xếp hạng và giao diện xem trước riêng. Luồng gợi ý dùng hồ sơ người dùng và việc gắn hàng đợi SQLite vào UI thuộc bước tích hợp tiếp theo.
+**Bản tích hợp issue #1, #4, #5, #7 và #10.** Trên Android/Web, ứng dụng đăng nhập bằng Firebase và mở màn hình **Thói quen** hoặc **Nhật ký ngủ & Lịch sinh hoạt** khi tài khoản có quyền truy cập dữ liệu. SQLite và sync worker nằm trong `lib/core/`. Bộ gợi ý đã có danh mục mẫu, bộ lọc, xếp hạng và giao diện xem trước riêng. Luồng gợi ý dùng hồ sơ người dùng và việc gắn hàng đợi SQLite vào UI thuộc bước tích hợp tiếp theo.
 
 AI đọc [AGENTS.md](AGENTS.md) trước khi sửa mã, rồi đọc issue được giao và các phần liên quan trong README. Các mục 1–11 bên dưới là **đặc tả/kế hoạch**, không phải danh sách tính năng đã hoàn thành.
 
@@ -67,6 +67,8 @@ Android: chạy `flutter devices`, bật USB debugging nếu dùng điện tho�
 **Khi chạy lần đầu**, HealthyLife hiển thị nút đăng nhập bằng Email/Password hoặc Google. Nếu Firebase đã lưu phiên trên thiết bị/trình duyệt, ứng dụng mở màn hình **Phiên đăng nhập**. Chọn **Đăng xuất** để thử tài khoản khác. Chạy được luồng đăng nhập chưa kiểm chứng toàn bộ Firebase Auth, Supabase JWT/RLS hoặc nghiệp vụ. Đã có kiểm thử tập trung cho SQLite và sync worker; hướng dẫn chạy và phạm vi kiểm thử ở mục 4.4. Thành viên làm hồ sơ và lịch tập nối màn hình của mình vào sau phiên đăng nhập khi tích hợp. Các issue khác vẫn cần bổ sung kiểm thử phù hợp, không ghi “tests passed” nếu chưa chạy test.
 
 **Module Thói quen & Kỷ luật.** Đăng nhập bằng tài khoản có claim `role: authenticated` và chọn **Mở thói quen**. Màn hình dùng UID Firebase của phiên hiện tại để tải dữ liệu Supabase. Khi lưu thói quen đầu tiên, app tạo hàng hồ sơ tối thiểu nếu chưa có. Thay đổi lịch lặp có hiệu lực từ ngày địa phương tiếp theo. Nếu khởi tạo backend thất bại, ứng dụng hiển thị nút **Thử lại**. Các test dùng `InMemoryHabitRepository` cho demo và dữ liệu giả. Màn hình thói quen hiện cần mạng để lưu lên Supabase.
+
+**Module Giấc ngủ & Lịch sinh hoạt (Issue #5).** Sau khi đăng nhập tài khoản có claim `role: authenticated`, chọn **Mở nhật ký ngủ** (chi tiết cấu trúc, phím tắt và phạm vi kiểm thử ở [lib/features/sleep/README.md](lib/features/sleep/README.md)). Hỗ trợ nhập giờ ngủ/thức qua ngày (+1 ngày), ca đêm ngủ ban ngày, mức tỉnh táo tự đánh giá (1–5), đặt khoảng ngủ mong muốn không ép mốc 22:00 và lịch sinh hoạt 24 giờ responsive Android/Web có nhãn truy cập và thao tác bàn phím. Nhật ký ngủ chỉ dựa trên dữ liệu tự khai báo, không suy ra giấc ngủ thật từ việc tắt màn hình điện thoại. Dữ liệu cloud đọc/ghi `public.sleep_logs`, `public.profiles.living_conditions` (`sleep_start`/`sleep_end`) và `public.availability_blocks` qua `SupabaseSleepRepository`; chạy kiểm thử cục bộ bằng `flutter test test/features/sleep` (dùng `InMemorySleepRepository`, không xác minh RLS trên cloud).
 
 Kiểm tra trên máy nhóm trưởng đã qua `flutter analyze --no-pub`, `flutter build web --no-pub` và `flutter build apk --debug --no-pub`. APK debug được tạo cục bộ trong `build/app/outputs/flutter-apk/`.
 

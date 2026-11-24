@@ -8,8 +8,12 @@ import 'features/habits/data/repositories/in_memory_habit_repository.dart';
 import 'features/habits/data/repositories/supabase_habit_repository.dart';
 import 'features/habits/domain/repositories/habit_repository.dart';
 import 'features/habits/presentation/pages/habits_page.dart';
+import 'features/sleep/data/repositories/in_memory_sleep_repository.dart';
+import 'features/sleep/data/repositories/supabase_sleep_repository.dart';
+import 'features/sleep/domain/repositories/sleep_repository.dart';
+import 'features/sleep/presentation/pages/sleep_page.dart';
 
-/// Khởi tạo và phân giải repository phù hợp:
+/// Khởi tạo và phân giải repository phù hợp cho module Thói quen:
 /// - Khi Supabase đã được cấu hình và khởi tạo (`isInitialized == true`):
 ///   kết nối trực tiếp với backend qua `SupabaseHabitRepository`.
 /// - Khi chạy độc lập hoặc offline (chưa khởi tạo Supabase):
@@ -29,6 +33,23 @@ HabitRepository resolveHabitRepository({HabitRepository? customRepository}) {
   return InMemoryHabitRepository(seedWithSamples: true);
 }
 
+/// Khởi tạo và phân giải repository phù hợp cho module Giấc ngủ & Lịch sinh hoạt (Issue #5):
+/// - Khi Supabase đã khởi tạo: kết nối qua `SupabaseSleepRepository`.
+/// - Khi chạy độc lập/offline: dùng `InMemorySleepRepository(seedWithSamples: true)` (demo ngoại tuyến).
+SleepRepository resolveSleepRepository({SleepRepository? customRepository}) {
+  if (customRepository != null) return customRepository;
+
+  try {
+    if (Supabase.instance.isInitialized) {
+      return SupabaseSleepRepository();
+    }
+  } catch (_) {
+    // Supabase chưa được khởi tạo
+  }
+
+  return InMemorySleepRepository(seedWithSamples: true);
+}
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const HealthyLifeApp());
@@ -37,8 +58,13 @@ void main() {
 /// Ứng dụng HealthyLife — Trợ lý kỷ luật và lối sống lành mạnh.
 class HealthyLifeApp extends StatefulWidget {
   final HabitRepository? habitRepository;
+  final SleepRepository? sleepRepository;
 
-  const HealthyLifeApp({super.key, this.habitRepository});
+  const HealthyLifeApp({
+    super.key,
+    this.habitRepository,
+    this.sleepRepository,
+  });
 
   @override
   State<HealthyLifeApp> createState() => _HealthyLifeAppState();
@@ -57,6 +83,25 @@ class _HealthyLifeAppState extends State<HealthyLifeApp> {
 
   @override
   Widget build(BuildContext context) {
+    // Nếu được truyền sleepRepository cụ thể (ví dụ trong widget test hoặc demo độc lập):
+    if (widget.sleepRepository != null) {
+      return MaterialApp(
+        title: 'HealthyLife - Giấc ngủ & Lịch sinh hoạt',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff216a52)),
+          inputDecorationTheme: const InputDecorationTheme(
+            border: OutlineInputBorder(),
+          ),
+        ),
+        home: SleepPage(
+          repository: widget.sleepRepository!,
+          currentUserId: 'demo-user-duc-2351170585',
+        ),
+      );
+    }
+
     // Nếu được truyền habitRepository cụ thể (ví dụ trong widget test hoặc demo độc lập):
     if (widget.habitRepository != null) {
       return MaterialApp(
@@ -94,6 +139,10 @@ class _HealthyLifeAppState extends State<HealthyLifeApp> {
               auth: auth,
               habitsPageBuilder: (session) => HabitsPage(
                 repository: SupabaseHabitRepository(),
+                currentUserId: session.uid,
+              ),
+              sleepPageBuilder: (session) => SleepPage(
+                repository: SupabaseSleepRepository(),
                 currentUserId: session.uid,
               ),
             );

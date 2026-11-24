@@ -6,17 +6,20 @@ import '../../domain/repositories/meal_photo_storage.dart';
 import '../../domain/services/meal_photo_validator.dart';
 
 /// Lớp dịch vụ upload ảnh bữa ăn lên bucket riêng tư `meal-images` của Supabase Storage.
-/// Thực thi validate lại định dạng/kích thước/không còn EXIF ở phía dịch vụ và ép đường dẫn
+/// Thực thi validate lại định dạng/kích thước/không còn EXIF ở phía dịch vụ, đối chiếu
+/// `ownerUid` với phiên Firebase hiện tại (đồng nhất với `SupabaseSyncTransport`) và ép đường dẫn
 /// `<owner_uid>/<log_id>.<ext>` khớp chính sách RLS Storage của dự án.
 class SupabasePrivateMealPhotoStorage implements MealPhotoStorage {
+  static final RegExp _safeLogIdPattern = RegExp(r'^[a-zA-Z0-9_-]+$');
+
   final SupabaseClient _client;
   final MealPhotoValidator validator;
-  final String? Function()? currentOwnerUid;
+  final String? Function() currentOwnerUid;
 
   const SupabasePrivateMealPhotoStorage(
     this._client, {
+    required this.currentOwnerUid,
     this.validator = const MealPhotoValidator(),
-    this.currentOwnerUid,
   });
 
   @override
@@ -25,14 +28,8 @@ class SupabasePrivateMealPhotoStorage implements MealPhotoStorage {
     required String logId,
     required PreparedMealPhoto photo,
   }) async {
-    final trimmedOwner = ownerUid.trim();
-    final activeUid = currentOwnerUid?.call();
-    if (activeUid != null && activeUid != trimmedOwner) {
-      throw const MealPhotoException(
-        MealPhotoFailureCode.invalidOwnerPath,
-        'UID chủ sở hữu không khớp phiên đăng nhập hiện tại.',
-      );
-    }
+    final trimmedOwner = _requireAuthenticatedOwner(ownerUid);
+    final safeLogId = _validateLogId(logId);
 
     final verifiedMime = validator.validateForUpload(
       ownerUid: trimmedOwner,
@@ -40,7 +37,7 @@ class SupabasePrivateMealPhotoStorage implements MealPhotoStorage {
       declaredMimeType: photo.mimeType,
     );
     final ext = validator.extensionForMime(verifiedMime);
-    final storagePath = '$trimmedOwner/$logId.$ext';
+    final storagePath = '$trimmedOwner/$safeLogId.$ext';
 
     await _client.storage
         .from(MealPhotoStorage.privateBucketName)
@@ -67,7 +64,10 @@ class SupabasePrivateMealPhotoStorage implements MealPhotoStorage {
     required String storagePath,
     Duration expiresIn = const Duration(minutes: 10),
   }) async {
-    if (!_isOwnedBy(ownerUid, storagePath)) {
+    final trimmedOwner = ownerUid.trim();
+    if (trimmedOwner.isEmpty ||
+        currentOwnerUid() != trimmedOwner ||
+        !_isOwnedBy(trimmedOwner, storagePath)) {
       return null;
     }
     return _client.storage
@@ -80,7 +80,8 @@ class SupabasePrivateMealPhotoStorage implements MealPhotoStorage {
     required String ownerUid,
     required String storagePath,
   }) async {
-    if (!_isOwnedBy(ownerUid, storagePath)) {
+    final trimmedOwner = _requireAuthenticatedOwner(ownerUid);
+    if (!_isOwnedBy(trimmedOwner, storagePath)) {
       throw const MealPhotoException(
         MealPhotoFailureCode.invalidOwnerPath,
         'Không được phép xóa ảnh thuộc tài khoản khác.',
@@ -91,8 +92,31 @@ class SupabasePrivateMealPhotoStorage implements MealPhotoStorage {
         .remove([storagePath]);
   }
 
-  bool _isOwnedBy(String ownerUid, String storagePath) {
+  String _requireAuthenticatedOwner(String ownerUid) {
     final trimmed = ownerUid.trim();
-    return trimmed.isNotEmpty && storagePath.startsWith('$trimmed/');
+    if (trimmed.isEmpty || currentOwnerUid() != trimmed) {
+      throw const MealPhotoException(
+        MealPhotoFailureCode.invalidOwnerPath,
+        'UID chủ sở hữu không khớp phiên đăng nhập hiện tại.',
+      );
+    }
+    return trimmed;
+  }
+
+  String _validateLogId(String logId) {
+    final trimmed = logId.trim();
+    if (trimmed.isEmpty || !_safeLogIdPattern.hasMatch(trimmed)) {
+      throw const MealPhotoException(
+        MealPhotoFailureCode.invalidOwnerPath,
+        'Định danh nhật ký không hợp lệ để tạo đường dẫn ảnh riêng tư.',
+      );
+    }
+    return trimmed;
+  }
+
+  bool _isOwnedBy(String ownerUid, String storagePath) {
+    return ownerUid.isNotEmpty &&
+        !storagePath.contains('..') &&
+        storagePath.startsWith('$ownerUid/');
   }
 }

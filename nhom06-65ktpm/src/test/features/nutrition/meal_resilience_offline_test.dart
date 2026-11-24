@@ -4,10 +4,12 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:healthylife/core/local_database.dart';
+import 'package:healthylife/core/local_sync_worker.dart';
 import 'package:healthylife/features/nutrition/data/repositories/in_memory_meal_log_repository.dart';
 import 'package:healthylife/features/nutrition/data/repositories/in_memory_pending_meal_photo_store.dart';
 import 'package:healthylife/features/nutrition/data/repositories/local_database_meal_log_repository.dart';
 import 'package:healthylife/features/nutrition/data/repositories/mock_meal_photo_services.dart';
+import 'package:healthylife/features/nutrition/data/repositories/supabase_private_meal_photo_storage.dart';
 import 'package:healthylife/features/nutrition/domain/entities/meal_photo_access_error.dart';
 import 'package:healthylife/features/nutrition/domain/entities/meal_photo_attachment.dart';
 import 'package:healthylife/features/nutrition/domain/entities/meal_photo_policy.dart';
@@ -18,6 +20,39 @@ import 'package:healthylife/features/recommendations/data/fixtures/sample_profil
 import 'package:healthylife/features/recommendations/data/repositories/fixture_catalog_repository.dart';
 import 'package:healthylife/features/recommendations/domain/usecases/get_recommendations_usecase.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+class _FakeSupabaseClient extends Fake implements SupabaseClient {}
+
+class _RecordingSyncTransport implements SyncTransport {
+  final List<Map<String, Object?>> calls = [];
+
+  @override
+  Future<SyncApplyResult> apply({
+    required String operationId,
+    required String ownerUid,
+    required String entityType,
+    required String recordId,
+    required String operation,
+    required Map<String, Object?>? payload,
+    required int? baseVersion,
+  }) async {
+    calls.add({
+      'operationId': operationId,
+      'ownerUid': ownerUid,
+      'entityType': entityType,
+      'recordId': recordId,
+      'operation': operation,
+      'payload': payload,
+      'baseVersion': baseVersion,
+    });
+    return SyncApplyResult(
+      outcome: 'applied',
+      serverVersion: (baseVersion ?? 0) + 1,
+      serverRecord: payload,
+    );
+  }
+}
 
 class _ToggleableOfflinePhotoStorage implements MealPhotoStorage {
   bool isOffline;
@@ -226,6 +261,76 @@ void main() {
       expect(updatedLogs.single.id, saveResult.log.id);
       expect(updatedLogs.single.hasPhoto, isTrue);
       expect(updatedLogs.single.imagePath, startsWith('uid-a/'));
+
+      // Đồng bộ hàng đợi SQLite qua LocalSyncWorker khớp hợp đồng entity_type = 'meal_log'
+      final transport = _RecordingSyncTransport();
+      final worker = LocalSyncWorker(
+        localDatabase: localDatabase,
+        transport: transport,
+      );
+      final syncedCount = await worker.flush('uid-a');
+      expect(syncedCount, 1);
+      expect(transport.calls.length, 1);
+      expect(transport.calls.single['ownerUid'], 'uid-a');
+      expect(transport.calls.single['entityType'], 'meal_log');
+      final syncedPayload =
+          transport.calls.single['payload']! as Map<String, Object?>;
+      expect(syncedPayload['meal_name'], 'Cơm gạo lứt cá hồi');
+      expect(syncedPayload['image_path'], updatedLogs.single.imagePath);
+    });
+
+    test('SupabasePrivateMealPhotoStorage chặn lệch ownerUid và logId có path traversal', () async {
+      final storage = SupabasePrivateMealPhotoStorage(
+        _FakeSupabaseClient(),
+        currentOwnerUid: () => 'uid-a',
+      );
+      final cleanBytes = MockMealPhotoPicker.buildMinimalValidJpeg();
+      final prepared = PreparedMealPhoto(
+        source: MealPhotoSource.camera,
+        fileName: 'meal.jpg',
+        mimeType: 'image/jpeg',
+        extension: 'jpg',
+        bytes: cleanBytes,
+        originalSizeBytes: cleanBytes.length,
+        compressed: false,
+        exifStripped: true,
+      );
+
+      await expectLater(
+        storage.uploadPrivatePhoto(
+          ownerUid: 'uid-b',
+          logId: 'log-1',
+          photo: prepared,
+        ),
+        throwsA(
+          isA<MealPhotoException>().having(
+            (e) => e.code,
+            'code',
+            MealPhotoFailureCode.invalidOwnerPath,
+          ),
+        ),
+      );
+      await expectLater(
+        storage.uploadPrivatePhoto(
+          ownerUid: 'uid-a',
+          logId: '../uid-b/escape',
+          photo: prepared,
+        ),
+        throwsA(
+          isA<MealPhotoException>().having(
+            (e) => e.code,
+            'code',
+            MealPhotoFailureCode.invalidOwnerPath,
+          ),
+        ),
+      );
+      expect(
+        await storage.createShortLivedSignedUrl(
+          ownerUid: 'uid-a',
+          storagePath: 'uid-b/other.jpg',
+        ),
+        isNull,
+      );
     });
   });
 

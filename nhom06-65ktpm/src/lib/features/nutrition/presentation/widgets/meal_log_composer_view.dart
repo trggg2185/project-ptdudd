@@ -54,6 +54,21 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
   }
 
   @override
+  void didUpdateWidget(covariant MealLogComposerView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.ownerUid != widget.ownerUid ||
+        oldWidget.mealType != widget.mealType ||
+        oldWidget.profile != widget.profile) {
+      _mealNameController.clear();
+      _noteController.clear();
+      _preparedPhoto = null;
+      _optionalLabelResult = null;
+      _statusMessage = null;
+      _loadInitialData();
+    }
+  }
+
+  @override
   void dispose() {
     _mealNameController.dispose();
     _noteController.dispose();

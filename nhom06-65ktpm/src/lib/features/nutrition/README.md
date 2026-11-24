@@ -4,7 +4,7 @@
 - **Review chéo:** Nguyễn Thế Trưởng (`@trggg2185`)
 - **Nhánh phát triển:** `feature/nhom06/nutrition` (base PR nội bộ: `nhom06-65ktpm`)
 - **Phụ thuộc phối hợp:** Issue #7 (`LocalDatabase`, `public.meal_logs`, bucket riêng tư `meal-images`) và Issue #10 (`GetRecommendationsUseCase`, `MealCatalogItem`, `RecommendationProfile`).
-- **Trạng thái hiện tại:** Đã hoàn thiện luồng gợi ý/đổi món theo hồ sơ, xác nhận tên món người dùng, validate định dạng/kích thước ở cả client và dịch vụ, nén & xóa EXIF/GPS trên JPEG/PNG/WebP, xử lý từ chối quyền/ảnh lỗi/mất mạng (tích hợp `LocalDatabase` SQLite + hàng đợi ảnh chờ retry), khóa suy luận calo/dị nguyên từ ảnh, tách ranh giới AI mở rộng và 21 unit/widget tests. Chưa gắn vào `lib/main.dart`, chưa cấu hình plugin camera thiết bị thật hoặc upload trực tiếp lên Supabase cloud thật.
+- **Trạng thái hiện tại:** Đã đồng bộ mới nhất từ `nhom06-65ktpm` (`464d08b` — bản tích hợp #1, #4, #7, #10), hoàn thiện luồng gợi ý/đổi món theo hồ sơ, xác nhận tên món người dùng, validate định dạng/kích thước ở cả client và dịch vụ, nén & xóa EXIF/GPS trên JPEG/PNG/WebP, xử lý từ chối quyền/ảnh lỗi/mất mạng (tích hợp `LocalDatabase` SQLite + `LocalSyncWorker` + hàng đợi ảnh chờ retry), khóa suy luận calo/dị nguyên từ ảnh, tách ranh giới AI mở rộng và 22 unit/widget tests. Chưa gắn vào `lib/main.dart`, chưa cấu hình plugin camera thiết bị thật hoặc upload trực tiếp lên Supabase cloud thật.
 
 ---
 
@@ -46,7 +46,7 @@ nhom06-65ktpm/src/
 └── test/features/nutrition/
     ├── meal_nutrition_flow_test.dart                     # Gợi ý/đổi món, xác nhận tên món, ảnh riêng tư & widget test (4 tests)
     ├── meal_photo_processing_test.dart                   # Validate client/service, xóa EXIF JPEG/PNG/WebP, nén lặp (7 tests)
-    ├── meal_resilience_offline_test.dart                 # Từ chối quyền, ảnh lỗi, mất mạng SQLite + retry không trùng (5 tests)
+    ├── meal_resilience_offline_test.dart                 # Từ chối quyền, ảnh lỗi, mất mạng SQLite + LocalSyncWorker + Storage guard (6 tests)
     └── meal_ai_safety_boundary_test.dart                 # Không suy calo/dị nguyên từ ảnh, AI mở rộng không chặn lõi (5 tests)
 ```
 
@@ -90,8 +90,8 @@ flutter test --no-pub
 ### Phạm vi đã kiểm tra và chưa kiểm tra
 - **Đã kiểm tra:**
   - `flutter analyze --no-pub`: không có lỗi/cảnh báo.
-  - `flutter test test/features/nutrition/ --no-pub`: **21/21** unit tests & widget tests đạt (bao gồm test lưu SQLite + `sync_queue` qua `sqflite_common_ffi`).
-  - `flutter test --no-pub`: toàn bộ **114/114** tests của dự án đạt.
+  - `flutter test test/features/nutrition/ --no-pub`: **22/22** unit tests & widget tests đạt (bao gồm test lưu SQLite + `LocalSyncWorker` qua `sqflite_common_ffi` và kiểm tra chống lệch `ownerUid`/path traversal).
+  - `flutter test --no-pub`: toàn bộ tests của dự án đạt.
 - **Chưa kiểm tra:**
   - Chưa kiểm thử chụp ảnh thật, cấp/thu hồi quyền Camera và nén native trên thiết bị Android vật lý (cần bổ sung adapter `image_picker` / quyền Android khi cả nhóm chốt tích hợp phần cứng).
   - Chưa kiểm thử upload/xem signed URL trực tiếp trên Supabase Storage thật với 3 tài khoản A/B/C (thuộc bước tích hợp và Issue #9).
@@ -101,8 +101,9 @@ flutter test --no-pub
 ## 4. Đề xuất phối hợp tích hợp
 
 - **Với Trưởng (`@trggg2185` — `auth`, `profile`, `app/`):**
-  - Gắn `MealLogComposerView` vào điều hướng chung; truyền `ownerUid` từ phiên Firebase Auth và `RecommendationProfile` từ hồ sơ người dùng.
+  - Gắn `MealLogComposerView` vào `_SessionNavigator` của `AuthGate` (đã hỗ trợ làm mới dữ liệu & xóa ảnh tạm khi đổi `ownerUid`); truyền `ownerUid` từ `AuthSession` và `RecommendationProfile` từ hồ sơ người dùng.
+  - `SupabasePrivateMealPhotoStorage` yêu cầu truyền `currentOwnerUid` bắt buộc đồng nhất với `SupabaseSyncTransport` (commit `464d08b`), chặn truy cập/tải lên chéo tài khoản.
   - Khi đăng xuất/đổi tài khoản, gọi `pendingPhotoStore.clearForOwner(oldUid)` hoặc xử lý hàng đợi chờ rõ ràng theo quy định bảo mật.
 - **Với Hà (`@HanHoangHa` — `supabase/migrations`, `LocalDatabase`):**
-  - `MealLog.toSupabasePayload()` đã khớp các cột `meal_id`, `meal_name`, `image_path`, `consumed_at`, `note` của bảng `public.meal_logs`, và `LocalDatabaseMealLogRepository` dùng đúng `entity_type = 'meal_log'`.
+  - `MealLog.toSupabasePayload()` đã khớp các cột `meal_id`, `meal_name`, `image_path`, `consumed_at`, `note` của bảng `public.meal_logs`, tương thích `LocalDatabase` + `LocalSyncWorker` (`entity_type = 'meal_log'`) và migration `20261123_000003_catalog_and_sync_integration.sql` (`p_expected_owner_uid` + trigger `advance_log_version`). Lưu ý khi ghi trực tiếp lần đầu lên `meal_logs` cần bảo đảm đã có hàng tối thiểu trong `public.profiles` (tương tự `SupabaseHabitRepository`).
   - Đề xuất cân nhắc bổ sung ràng buộc mức bucket trên `storage.buckets` cho `'meal-images'` (`file_size_limit = 1048576`, `allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp']`) trong lần cập nhật migration tiếp theo để củng cố thêm lớp kiểm tra phía Supabase Storage.

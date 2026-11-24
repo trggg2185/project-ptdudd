@@ -131,6 +131,25 @@ void main() {
       expect(identical(customResolved, custom), isTrue);
     });
 
+    test('habit schedule edits only apply from the next local date', () async {
+      final controller = HabitController(repository: repository, currentUserId: userId);
+      addTearDown(controller.dispose);
+      final habit = Habit(id: 'schedule-change', ownerUid: userId, name: 'Đi bộ');
+      await controller.createHabit(habit);
+
+      const weekdays = HabitFrequency.weekdays();
+      final weekends = HabitFrequency.custom({DateTime.saturday, DateTime.sunday});
+      await controller.updateHabit(habit.copyWith(frequency: weekdays));
+      await controller.updateHabit(habit.copyWith(frequency: weekends));
+
+      final saved = controller.habits.single;
+      final now = DateTime.now();
+      final tomorrow = DateTime(now.year, now.month, now.day + 1);
+      expect(saved.getFrequencyOn(now), const HabitFrequency.daily());
+      expect(saved.getFrequencyOn(tomorrow), weekends);
+      expect(saved.frequencyHistory, hasLength(2));
+    });
+
     testWidgets('HabitFormPage validates required habit name', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(

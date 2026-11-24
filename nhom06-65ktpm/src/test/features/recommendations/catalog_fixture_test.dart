@@ -73,6 +73,13 @@ void main() {
           jsonDecode(seedFile.readAsStringSync()) as Map<String, dynamic>;
       final rawExercises = decoded['exercise_catalog'] as List<dynamic>;
       final rawMeals = decoded['meal_catalog'] as List<dynamic>;
+      final sql = File('supabase/seed/20261121_initial_catalog.sql')
+          .readAsStringSync();
+      final sqlRows = RegExp(r'\$catalog\$(.*?)\$catalog\$', dotAll: true)
+          .allMatches(sql)
+          .map((match) => jsonDecode(match.group(1)!))
+          .toList();
+      expect(sqlRows, [rawExercises, rawMeals]);
 
       final exercises = rawExercises
           .map((e) => ExerciseCatalogItem.fromMap(e as Map<String, dynamic>))
@@ -93,6 +100,14 @@ void main() {
       );
       expect(exercises.every((e) => e.hasVerifiedSource), isTrue);
       expect(meals.every((e) => e.hasVerifiedSource && e.hasClearIngredients), isTrue);
+      expect(
+        exercises.map((item) => item.toMap()),
+        SampleCatalogFixture.sampleExercises.map((item) => item.toMap()),
+      );
+      expect(
+        meals.map((item) => item.toMap()),
+        SampleCatalogFixture.sampleMeals.map((item) => item.toMap()),
+      );
     });
 
     test('FixtureCatalogRepository trả về đúng danh mục mẫu và hỗ trợ round-trip map', () async {

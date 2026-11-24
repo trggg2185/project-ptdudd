@@ -318,8 +318,8 @@ class Habit {
       'description': description,
       'recurrence_rule': jsonEncode(recurrenceMap),
       'is_active': isActive,
-      'created_at': createdAt.toIso8601String(),
-      'updated_at': updatedAt.toIso8601String(),
+      'created_at': createdAt.toUtc().toIso8601String(),
+      'updated_at': updatedAt.toUtc().toIso8601String(),
       'version': version,
     };
   }
@@ -376,10 +376,10 @@ class Habit {
       isActive: map['is_active'] as bool? ?? true,
       pausedAt: paused,
       createdAt: map['created_at'] != null
-          ? DateTime.parse(map['created_at'] as String)
+          ? DateTime.parse(map['created_at'] as String).toLocal()
           : null,
       updatedAt: map['updated_at'] != null
-          ? DateTime.parse(map['updated_at'] as String)
+          ? DateTime.parse(map['updated_at'] as String).toLocal()
           : null,
       version: map['version'] as int? ?? 1,
     );

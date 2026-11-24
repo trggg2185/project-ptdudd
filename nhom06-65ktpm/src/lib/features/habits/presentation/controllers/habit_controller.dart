@@ -15,6 +15,7 @@ class HabitController extends ChangeNotifier {
   final String currentUserId;
 
   bool _isLoading = false;
+  bool _disposed = false;
   String? _errorMessage;
   List<Habit> _habits = [];
   Map<String, HabitLog?> _selectedDateLogs = {};
@@ -94,7 +95,15 @@ class HabitController extends ChangeNotifier {
   /// Đổi ngày đang xem (hôm nay, hôm qua, hoặc một ngày bất kỳ).
   Future<void> setSelectedDate(DateTime newDate) async {
     _selectedDate = DateHelper.normalize(newDate);
-    await _refreshDayLogsAndStreaks();
+    _selectedDateLogs = {};
+    _streakInfos = {};
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      await _refreshDayLogsAndStreaks();
+    } catch (error) {
+      _errorMessage = _formatErrorMessage('Không thể tải nhật ký', error);
+    }
     notifyListeners();
   }
 
@@ -111,6 +120,7 @@ class HabitController extends ChangeNotifier {
     CheckInStatus status = CheckInStatus.completed,
     String? reason,
   }) async {
+    final date = _selectedDate;
     // 1. Chặn tương lai:
     if (DateHelper.isFutureDay(_selectedDate, DateTime.now())) {
       _errorMessage = 'Không thể ghi nhận check-in cho ngày trong tương lai.';
@@ -123,18 +133,21 @@ class HabitController extends ChangeNotifier {
         id: IdGenerator.generateUuid(),
         habitId: habitId,
         userId: currentUserId,
-        date: _selectedDate,
+        date: date,
         status: status,
         reason: reason,
         loggedAt: DateTime.now(),
       );
 
       await repository.recordCheckIn(log);
-      _selectedDateLogs[habitId] = log;
+      if (_selectedDate == date) _selectedDateLogs[habitId] = log;
 
       // Cập nhật lại streak cho thói quen này
       final habit = _habits.firstWhere((h) => h.id == habitId);
-      _streakInfos[habitId] = await repository.getStreakInfo(habit, referenceDate: _selectedDate);
+      final streak = await repository.getStreakInfo(habit, referenceDate: date);
+      if (_selectedDate == date) {
+        _streakInfos[habitId] = streak;
+      }
 
       _errorMessage = null;
       notifyListeners();
@@ -146,15 +159,19 @@ class HabitController extends ChangeNotifier {
 
   /// Hủy check-in trong ngày đang chọn (hoàn tác).
   Future<void> undoCheckIn(String habitId) async {
+    final date = _selectedDate;
     final existingLog = _selectedDateLogs[habitId];
     if (existingLog == null) return;
 
     try {
       await repository.deleteHabitLog(existingLog.id);
-      _selectedDateLogs.remove(habitId);
+      if (_selectedDate == date) _selectedDateLogs.remove(habitId);
 
       final habit = _habits.firstWhere((h) => h.id == habitId);
-      _streakInfos[habitId] = await repository.getStreakInfo(habit, referenceDate: _selectedDate);
+      final streak = await repository.getStreakInfo(habit, referenceDate: date);
+      if (_selectedDate == date) {
+        _streakInfos[habitId] = streak;
+      }
 
       _errorMessage = null;
       notifyListeners();
@@ -194,13 +211,15 @@ class HabitController extends ChangeNotifier {
 
       if (index != -1) {
         final existing = _habits[index];
-        // Nếu chu kỳ lặp thay đổi: ghi nhận mốc lịch mới có hiệu lực từ hôm nay
         if (existing.frequency != updatedHabit.frequency) {
-          final newHistory = List<FrequencySchedule>.from(existing.frequencyHistory);
+          final effectiveFrom = DateHelper.shiftDays(DateTime.now(), 1);
+          final newHistory = existing.frequencyHistory
+              .where((schedule) => schedule.effectiveFrom.isBefore(effectiveFrom))
+              .toList();
           newHistory.add(
             FrequencySchedule(
               frequency: updatedHabit.frequency,
-              effectiveFrom: DateHelper.normalize(DateTime.now()),
+              effectiveFrom: effectiveFrom,
             ),
           );
           habitToSave = updatedHabit.copyWith(frequencyHistory: newHistory);
@@ -262,8 +281,6 @@ class HabitController extends ChangeNotifier {
       );
 
       await repository.saveHabit(updated);
-      await repository.toggleHabitActive(habitId, newActiveState);
-
       final index = _habits.indexWhere((h) => h.id == habitId);
       if (index != -1) {
         _habits[index] = updated;
@@ -307,19 +324,33 @@ class HabitController extends ChangeNotifier {
 
   /// Tải lại nhật ký check-in của ngày được chọn và tính lại toàn bộ streak.
   Future<void> _refreshDayLogsAndStreaks() async {
+    final date = _selectedDate;
     final Map<String, HabitLog?> logsMap = {};
     final Map<String, StreakInfo> streakMap = {};
 
     for (final habit in _habits) {
-      final log = await repository.getLogForHabitAndDate(habit.id, _selectedDate);
+      final log = await repository.getLogForHabitAndDate(habit.id, date);
       logsMap[habit.id] = log;
 
-      final streak = await repository.getStreakInfo(habit, referenceDate: _selectedDate);
+      final streak = await repository.getStreakInfo(habit, referenceDate: date);
       streakMap[habit.id] = streak;
     }
 
-    _selectedDateLogs = logsMap;
-    _streakInfos = streakMap;
+    if (_selectedDate == date) {
+      _selectedDateLogs = logsMap;
+      _streakInfos = streakMap;
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
   }
 
   String _formatErrorMessage(String prefix, Object error) {

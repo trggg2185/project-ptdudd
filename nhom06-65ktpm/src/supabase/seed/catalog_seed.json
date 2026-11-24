@@ -396,7 +396,7 @@
       "meal_type": "dinner",
       "ingredients": ["gao_lut", "ca_hoi", "qua_bo", "dua_leo", "me_rang"],
       "ingredients_clear": true,
-      "allergens": ["seafood", "sesame"],
+      "allergens": ["fish", "seafood", "sesame"],
       "diet_tags": ["balanced", "high_protein"],
       "requires_cooking": true,
       "budget_tier": "high",

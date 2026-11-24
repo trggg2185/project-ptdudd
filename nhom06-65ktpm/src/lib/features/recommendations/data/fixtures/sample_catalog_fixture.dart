@@ -374,7 +374,7 @@ class SampleCatalogFixture {
       name: 'Cơm gạo lứt cá hồi áp chảo và bơ',
       mealType: 'dinner',
       ingredients: ['gao_lut', 'ca_hoi', 'qua_bo', 'dua_leo', 'me_rang'],
-      allergens: ['seafood', 'sesame'],
+      allergens: ['fish', 'seafood', 'sesame'],
       dietTags: ['balanced', 'high_protein'],
       requiresCooking: true,
       budgetTier: 'high',

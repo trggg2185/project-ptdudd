@@ -237,6 +237,21 @@ void main() {
       expect(result.message, isNotNull);
     });
 
+    test('loại món cá hồi khi hồ sơ khai dị ứng cá', () {
+      final result = filter.filterMeals(
+        catalog: SampleCatalogFixture.sampleMeals,
+        profile: validAdultProfile(
+          allergiesConfirmed: true,
+          allergies: const ['fish'],
+        ),
+        mealType: 'dinner',
+      );
+      final excluded = result.excludedItems.singleWhere(
+        (entry) => entry.item.slug == 'salmon-brown-rice-bowl',
+      );
+      expect(excluded.reasons.join(' '), contains('fish'));
+    });
+
     test('loại Gỏi cuốn tôm thịt rau sống khi hồ sơ chỉ dị ứng riêng đậu phộng (peanut)', () {
       final result = filter.filterMeals(
         catalog: SampleCatalogFixture.sampleMeals,

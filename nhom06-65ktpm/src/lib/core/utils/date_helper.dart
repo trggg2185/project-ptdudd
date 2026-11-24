@@ -5,6 +5,10 @@ class DateHelper {
     return DateTime(dateTime.year, dateTime.month, dateTime.day);
   }
 
+  static DateTime shiftDays(DateTime date, int days) {
+    return DateTime(date.year, date.month, date.day + days);
+  }
+
   /// Kiểm tra hai thời điểm có thuộc cùng một ngày lịch địa phương hay không.
   static bool isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;

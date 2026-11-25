@@ -125,7 +125,9 @@ class InMemorySleepRepository implements SleepRepository {
 
     if (existing == null || existing.version != baseVersion) {
       throw SleepConflictException(
-        'Bản ghi giấc ngủ đã bị thay đổi trên thiết bị khác. Vui lòng tải lại dữ liệu trước khi chỉnh sửa.',
+        existing == null
+            ? 'Bản ghi giấc ngủ đã bị xóa trên thiết bị khác. Danh sách đã được cập nhật.'
+            : 'Bản ghi giấc ngủ đã bị thay đổi trên thiết bị khác. Vui lòng tải lại dữ liệu trước khi chỉnh sửa.',
         serverVersion: existing?.version,
         serverLog: existing,
       );
@@ -149,11 +151,12 @@ class InMemorySleepRepository implements SleepRepository {
     final ownerMap = _logsByOwner[ownerUid];
     final existing = ownerMap?[logId];
     if (baseVersion != null &&
-        existing != null &&
-        existing.version != baseVersion) {
+        (existing == null || existing.version != baseVersion)) {
       throw SleepConflictException(
-        'Bản ghi giấc ngủ đã được cập nhật ở thiết bị khác trước khi xóa. Vui lòng tải lại dữ liệu.',
-        serverVersion: existing.version,
+        existing == null
+            ? 'Bản ghi giấc ngủ đã bị xóa ở thiết bị khác trước đó.'
+            : 'Bản ghi giấc ngủ đã được cập nhật ở thiết bị khác trước khi xóa. Vui lòng tải lại dữ liệu.',
+        serverVersion: existing?.version,
         serverLog: existing,
       );
     }

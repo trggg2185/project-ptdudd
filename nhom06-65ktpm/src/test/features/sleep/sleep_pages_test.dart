@@ -433,6 +433,55 @@ void main() {
       expect(controller.sleepLogs.single.version, equals(3));
       expect(await repo.getSleepLogs(ownerUid: userId), hasLength(1));
     });
+
+    test(
+      'SleepController loại bản ghi khỏi danh sách local khi conflict báo bản ghi đã bị xóa trên máy chủ',
+      () async {
+        final repo = InMemorySleepRepository(seedWithSamples: false);
+        final controller = SleepController(
+          repository: repo,
+          currentUserId: userId,
+          nowProvider: () => fixedNow,
+        );
+        addTearDown(controller.dispose);
+
+        // 1. Trường hợp sửa bản ghi đã bị xóa ở thiết bị khác (serverRecord == null)
+        await controller.saveSleepLog(
+          sleptAt: DateTime(2026, 11, 22, 23, 0),
+          wokeAt: DateTime(2026, 11, 23, 7, 0),
+          alertness: AlertnessLevel.refreshed,
+          note: 'Bản sẽ bị xóa trước khi sửa',
+        );
+        final firstLog = controller.sleepLogs.single;
+        await repo.deleteSleepLog(ownerUid: userId, logId: firstLog.id);
+
+        final editDeleted = await controller.saveSleepLog(
+          existingId: firstLog.id,
+          sleptAt: DateTime(2026, 11, 22, 23, 15),
+          wokeAt: DateTime(2026, 11, 23, 7, 15),
+          alertness: AlertnessLevel.energized,
+          note: 'Cố sửa sau khi thiết bị khác đã xóa',
+        );
+        expect(editDeleted, isFalse);
+        expect(controller.actionError, contains('đã bị xóa'));
+        expect(controller.sleepLogs, isEmpty);
+
+        // 2. Trường hợp xóa bản ghi đã bị xóa ở thiết bị khác (serverRecord == null)
+        await controller.saveSleepLog(
+          sleptAt: DateTime(2026, 11, 23, 23, 0),
+          wokeAt: DateTime(2026, 11, 24, 7, 0),
+          alertness: AlertnessLevel.neutral,
+          note: 'Bản sẽ bị xóa trước khi xóa lại',
+        );
+        final secondLog = controller.sleepLogs.single;
+        await repo.deleteSleepLog(ownerUid: userId, logId: secondLog.id);
+
+        final deleteDeleted = await controller.deleteSleepLog(secondLog.id);
+        expect(deleteDeleted, isFalse);
+        expect(controller.actionError, contains('đã bị xóa'));
+        expect(controller.sleepLogs, isEmpty);
+      },
+    );
   });
 }
 

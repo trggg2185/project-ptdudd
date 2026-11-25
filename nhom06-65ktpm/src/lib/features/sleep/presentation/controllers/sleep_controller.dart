@@ -193,6 +193,9 @@ class SleepController extends ChangeNotifier {
     } on SleepConflictException catch (conflict) {
       if (conflict.serverLog != null) {
         _upsertLocalLog(conflict.serverLog!);
+      } else if (existing != null && conflict.serverVersion == null) {
+        // Bản ghi không còn tồn tại trên máy chủ (đã bị xóa từ thiết bị khác)
+        _sleepLogs = _sleepLogs.where((l) => l.id != existing.id).toList();
       }
       _actionError = conflict.message;
       _isMutating = false;
@@ -242,6 +245,9 @@ class SleepController extends ChangeNotifier {
     } on SleepConflictException catch (conflict) {
       if (conflict.serverLog != null) {
         _upsertLocalLog(conflict.serverLog!);
+      } else if (conflict.serverVersion == null) {
+        // Bản ghi đã không còn tồn tại trên máy chủ -> loại khỏi danh sách local
+        _sleepLogs = _sleepLogs.where((l) => l.id != logId).toList();
       }
       _actionError = conflict.message;
       return false;

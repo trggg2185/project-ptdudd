@@ -254,6 +254,22 @@ void main() {
               .having((e) => e.serverVersion, 'serverVersion', 3),
         ),
       );
+
+      // 5. Conflict khi bản ghi đã bị xóa hẳn trên server (serverVersion == null, serverRecord == null)
+      fakeTransport.handler = (_) => const SyncApplyResult(
+            outcome: 'conflict',
+            serverVersion: null,
+            serverRecord: null,
+          );
+      await expectLater(
+        () => repo.saveSleepLog(savedV1, baseVersion: 1),
+        throwsA(
+          isA<SleepConflictException>()
+              .having((e) => e.serverVersion, 'serverVersion', isNull)
+              .having((e) => e.serverLog, 'serverLog', isNull)
+              .having((e) => e.message, 'message', contains('đã bị xóa')),
+        ),
+      );
     });
 
     test('SleepLog toSupabaseMap / fromSupabaseMap giữ nguyên UTC và trường bảng sleep_logs', () {

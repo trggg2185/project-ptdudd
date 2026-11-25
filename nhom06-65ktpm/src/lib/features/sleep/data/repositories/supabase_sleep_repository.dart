@@ -130,9 +130,13 @@ class SupabaseSleepRepository implements SleepRepository {
             : SleepLog.fromSupabaseMap(
                 Map<String, dynamic>.from(result.serverRecord!),
               );
+        final deletedOnServer =
+            serverLog == null && result.serverVersion == null;
         throw SleepConflictException(
-          'Bản ghi giấc ngủ đã bị thay đổi trên thiết bị khác. '
-          'Vui lòng tải lại dữ liệu trước khi chỉnh sửa để tránh ghi đè.',
+          deletedOnServer
+              ? 'Bản ghi giấc ngủ đã bị xóa trên thiết bị khác. Danh sách đã được cập nhật.'
+              : 'Bản ghi giấc ngủ đã bị thay đổi trên thiết bị khác. '
+                  'Vui lòng tải lại dữ liệu trước khi chỉnh sửa để tránh ghi đè.',
           serverVersion: result.serverVersion,
           serverLog: serverLog,
         );
@@ -188,9 +192,13 @@ class SupabaseSleepRepository implements SleepRepository {
             : SleepLog.fromSupabaseMap(
                 Map<String, dynamic>.from(result.serverRecord!),
               );
+        final deletedOnServer =
+            serverLog == null && result.serverVersion == null;
         throw SleepConflictException(
-          'Bản ghi giấc ngủ đã thay đổi ở thiết bị khác trước khi xóa. '
-          'Vui lòng tải lại dữ liệu.',
+          deletedOnServer
+              ? 'Bản ghi giấc ngủ đã bị xóa ở thiết bị khác trước đó.'
+              : 'Bản ghi giấc ngủ đã thay đổi ở thiết bị khác trước khi xóa. '
+                  'Vui lòng tải lại dữ liệu.',
           serverVersion: result.serverVersion,
           serverLog: serverLog,
         );

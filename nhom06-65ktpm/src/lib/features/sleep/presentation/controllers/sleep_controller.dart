@@ -19,6 +19,7 @@ class SleepController extends ChangeNotifier {
   bool _isMutating = false;
   String? _loadError;
   String? _actionError;
+  String? _syncWarning;
 
   List<SleepLog> _sleepLogs = [];
   SleepWindow? _sleepWindow;
@@ -37,6 +38,10 @@ class SleepController extends ChangeNotifier {
   bool get isMutating => _isMutating;
   String? get loadError => _loadError;
   String? get actionError => _actionError;
+
+  /// Cảnh báo nhẹ khi thao tác lưu đã thành công nhưng bước tải lại danh sách mới nhất gặp lỗi mạng.
+  String? get syncWarning => _syncWarning;
+
   List<SleepLog> get sleepLogs => List.unmodifiable(_sleepLogs);
   SleepWindow? get sleepWindow => _sleepWindow;
   List<RoutineBlock> get routineBlocks => List.unmodifiable(_routineBlocks);
@@ -76,6 +81,13 @@ class SleepController extends ChangeNotifier {
     }
   }
 
+  void clearSyncWarning() {
+    if (_syncWarning != null) {
+      _syncWarning = null;
+      notifyListeners();
+    }
+  }
+
   /// Tải toàn bộ nhật ký ngủ, khoảng ngủ mong muốn và khối lịch sinh hoạt.
   Future<void> loadAll() async {
     _isLoading = true;
@@ -97,6 +109,7 @@ class SleepController extends ChangeNotifier {
       _routineBlocks = results[2]! as List<RoutineBlock>;
       _hasLoadedOnce = true;
       _loadError = null;
+      _syncWarning = null;
     } catch (error) {
       _loadError = _formatError('Không thể tải dữ liệu giấc ngủ', error);
     } finally {
@@ -118,8 +131,18 @@ class SleepController extends ChangeNotifier {
     setSelectedDate(DateHelper.shiftDays(_selectedDate, deltaDays));
   }
 
-  /// Lưu mới hoặc cập nhật nhật ký ngủ sau khi xác thực đầy đủ (hỗ trợ qua ngày & ca đêm).
-  /// Trả về `true` nếu lưu thành công, `false` nếu có lỗi xác thực hoặc lỗi lưu trữ.
+  void _upsertLocalLog(SleepLog saved) {
+    final updated = _sleepLogs.where((l) => l.id != saved.id).toList()
+      ..add(saved)
+      ..sort((a, b) => b.sleptAt.compareTo(a.sleptAt));
+    _sleepLogs = updated;
+  }
+
+  /// Lưu mới hoặc cập nhật nhật ký ngủ sau khi xác thực đầy đủ (hỗ trợ qua ngày, ca đêm
+  /// và kiểm tra xung đột `baseVersion`).
+  ///
+  /// Tách biệt rõ bước lưu và bước tải lại: nếu lưu đã thành công nhưng reload gặp lỗi mạng,
+  /// vẫn giữ bản đã lưu ở trạng thái local, trả về `true` và hiển thị [syncWarning] thay vì báo lỗi lưu sai.
   Future<bool> saveSleepLog({
     String? existingId,
     required DateTime sleptAt,
@@ -128,6 +151,7 @@ class SleepController extends ChangeNotifier {
     String? note,
   }) async {
     _actionError = null;
+    _syncWarning = null;
 
     final existing = existingId == null
         ? null
@@ -160,31 +184,67 @@ class SleepController extends ChangeNotifier {
     _isMutating = true;
     notifyListeners();
 
+    late final SleepLog saved;
     try {
-      await repository.saveSleepLog(candidate);
-      _sleepLogs = await repository.getSleepLogs(ownerUid: currentUserId);
-      _actionError = null;
-      return true;
+      saved = await repository.saveSleepLog(
+        candidate,
+        baseVersion: existing?.version,
+      );
+    } on SleepConflictException catch (conflict) {
+      if (conflict.serverLog != null) {
+        _upsertLocalLog(conflict.serverLog!);
+      }
+      _actionError = conflict.message;
+      _isMutating = false;
+      notifyListeners();
+      return false;
     } catch (error) {
       _actionError = _formatError('Không thể lưu nhật ký giấc ngủ', error);
+      _isMutating = false;
+      notifyListeners();
       return false;
+    }
+
+    // Bước lưu đã thành công: cập nhật ngay bản đã xác nhận từ server
+    _upsertLocalLog(saved);
+    _actionError = null;
+
+    // Tải lại danh sách là bước đồng bộ bổ sung: lỗi reload không đảo ngược trạng thái đã lưu
+    try {
+      _sleepLogs = await repository.getSleepLogs(ownerUid: currentUserId);
+      _syncWarning = null;
+    } catch (_) {
+      _syncWarning =
+          'Đã lưu nhật ký giấc ngủ thành công, nhưng không thể tải lại danh sách mới nhất từ máy chủ. Bạn có thể bấm Tải lại sau.';
     } finally {
       _isMutating = false;
       notifyListeners();
     }
+    return true;
   }
 
-  /// Xóa bản ghi nhật ký ngủ.
+  /// Xóa bản ghi nhật ký ngủ (kèm kiểm tra `baseVersion` để tránh xung đột hai thiết bị).
   Future<bool> deleteSleepLog(String logId) async {
     _actionError = null;
+    final existing = _sleepLogs.where((l) => l.id == logId).firstOrNull;
     _isMutating = true;
     notifyListeners();
 
     try {
-      await repository.deleteSleepLog(ownerUid: currentUserId, logId: logId);
+      await repository.deleteSleepLog(
+        ownerUid: currentUserId,
+        logId: logId,
+        baseVersion: existing?.version,
+      );
       _sleepLogs = _sleepLogs.where((l) => l.id != logId).toList();
       _actionError = null;
       return true;
+    } on SleepConflictException catch (conflict) {
+      if (conflict.serverLog != null) {
+        _upsertLocalLog(conflict.serverLog!);
+      }
+      _actionError = conflict.message;
+      return false;
     } catch (error) {
       _actionError = _formatError('Không thể xóa nhật ký giấc ngủ', error);
       return false;

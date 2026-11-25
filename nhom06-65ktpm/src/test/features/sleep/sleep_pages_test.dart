@@ -10,6 +10,7 @@ import 'package:healthylife/features/sleep/domain/entities/routine_block.dart';
 import 'package:healthylife/features/sleep/domain/entities/sleep_log.dart';
 import 'package:healthylife/features/sleep/domain/entities/sleep_window.dart';
 import 'package:healthylife/features/sleep/domain/repositories/sleep_repository.dart';
+import 'package:healthylife/features/sleep/presentation/controllers/sleep_controller.dart';
 import 'package:healthylife/features/sleep/presentation/pages/sleep_page.dart';
 import 'package:healthylife/main.dart';
 
@@ -58,6 +59,7 @@ void main() {
     ) async {
       final repo = InMemorySleepRepository(
         seedWithSamples: true,
+        referenceDate: fixedNow,
         nextError: const SleepSyncException('Mất kết nối Supabase khi tải nhật ký ngủ.'),
       );
 
@@ -196,6 +198,7 @@ void main() {
       final repo = InMemorySleepRepository(
         seedWithSamples: true,
         nightShiftSample: true,
+        referenceDate: fixedNow,
       );
 
       // 1. Màn hình Android hẹp (390x844) -> compact layout 1 cột có SegmentedButton
@@ -317,6 +320,118 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('sleep:user-sleep-a'), findsNothing);
       expect(tester.widget<FilledButton>(openSleepButton).onPressed, isNull);
+    });
+
+    testWidgets(
+      'lưu thành công nhưng tải lại thất bại vẫn giữ bản ghi và hiển thị cảnh báo đồng bộ',
+      (tester) async {
+        final repo = InMemorySleepRepository(seedWithSamples: false);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SleepPage(
+              repository: repo,
+              currentUserId: userId,
+              nowProvider: () => fixedNow,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Mở form thêm nhật ký
+        await tester.tap(find.byKey(const Key('sleep_add_fab')));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(find.byKey(const Key('sleep_bed_hour')), '23');
+        await tester.enterText(find.byKey(const Key('sleep_bed_minute')), '30');
+        await tester.enterText(find.byKey(const Key('sleep_wake_hour')), '07');
+        await tester.enterText(find.byKey(const Key('sleep_wake_minute')), '00');
+        await tester.enterText(
+          find.byKey(const Key('sleep_note_field')),
+          'Đã lưu thành công dù reload lỗi',
+        );
+
+        // Mô phỏng lỗi mạng chỉ ở bước reload getSleepLogs sau khi save đã thành công
+        repo.nextReadLogsError = const SleepSyncException(
+          'Mất mạng khi tải lại danh sách.',
+        );
+
+        await tester.ensureVisible(find.byKey(const Key('sleep_save_button')));
+        await tester.tap(find.byKey(const Key('sleep_save_button')));
+        await tester.pumpAndSettle();
+
+        // Form phải đóng lại, bản ghi vừa lưu hiển thị ngay, KHÔNG báo lỗi lưu
+        expect(find.text('Ghi nhật ký giấc ngủ'), findsNothing);
+        expect(find.textContaining('Nhật ký giấc ngủ (1)'), findsOneWidget);
+        expect(find.text('Đã lưu thành công dù reload lỗi'), findsOneWidget);
+        expect(find.textContaining('Không thể lưu nhật ký'), findsNothing);
+
+        // Hiển thị cảnh báo nhẹ về bước tải lại và xóa sạch sau khi bấm Tải lại
+        expect(
+          find.textContaining('Đã lưu nhật ký giấc ngủ thành công, nhưng không thể tải lại'),
+          findsOneWidget,
+        );
+        await tester.tap(find.text('Tải lại'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.textContaining('Đã lưu nhật ký giấc ngủ thành công, nhưng không thể tải lại'),
+          findsNothing,
+        );
+        expect(find.textContaining('Nhật ký giấc ngủ (1)'), findsOneWidget);
+      },
+    );
+
+    test('SleepController chặn ghi đè và báo xung đột khi chỉnh sửa hoặc xóa bản ghi cũ', () async {
+      final repo = InMemorySleepRepository(seedWithSamples: false);
+      final controller = SleepController(
+        repository: repo,
+        currentUserId: userId,
+        nowProvider: () => fixedNow,
+      );
+      addTearDown(controller.dispose);
+
+      // Tạo bản ghi ban đầu (version 1)
+      final created = await controller.saveSleepLog(
+        sleptAt: DateTime(2026, 11, 23, 23, 0),
+        wokeAt: DateTime(2026, 11, 24, 7, 0),
+        alertness: AlertnessLevel.refreshed,
+        note: 'Bản gốc v1',
+      );
+      expect(created, isTrue);
+      final localV1 = controller.sleepLogs.single;
+      expect(localV1.version, equals(1));
+
+      // Thiết bị khác cập nhật bản ghi lên version 2
+      final remoteV2 = await repo.saveSleepLog(
+        localV1.copyWith(note: 'Bản cập nhật từ thiết bị B'),
+        baseVersion: 1,
+      );
+      expect(remoteV2.version, equals(2));
+
+      // Thiết bị hiện tại (vẫn cầm v1) chỉnh sửa -> phải báo xung đột, không ghi đè v2
+      final saveResult = await controller.saveSleepLog(
+        existingId: localV1.id,
+        sleptAt: DateTime(2026, 11, 23, 23, 15),
+        wokeAt: DateTime(2026, 11, 24, 7, 15),
+        alertness: AlertnessLevel.energized,
+        note: 'Bản cũ từ thiết bị A',
+      );
+      expect(saveResult, isFalse);
+      expect(controller.actionError, contains('thiết bị khác'));
+      expect(controller.sleepLogs.single.version, equals(2));
+      expect(controller.sleepLogs.single.note, equals('Bản cập nhật từ thiết bị B'));
+
+      // Thiết bị khác tiếp tục nâng lên v3 -> thao tác xóa cầm v2 cũng bị chặn xung đột
+      await repo.saveSleepLog(
+        remoteV2.copyWith(note: 'Bản v3 từ thiết bị B'),
+        baseVersion: 2,
+      );
+      final deleteResult = await controller.deleteSleepLog(localV1.id);
+      expect(deleteResult, isFalse);
+      expect(controller.actionError, contains('thiết bị khác'));
+      expect(controller.sleepLogs.single.version, equals(3));
+      expect(await repo.getSleepLogs(ownerUid: userId), hasLength(1));
     });
   });
 }

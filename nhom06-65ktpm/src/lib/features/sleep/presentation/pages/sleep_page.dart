@@ -234,6 +234,14 @@ class _SleepPageState extends State<SleepPage> {
                         ),
                         const SizedBox(height: 12),
                       ],
+                      if (_controller.syncWarning != null) ...[
+                        _SyncWarningBanner(
+                          message: _controller.syncWarning!,
+                          onReload: _controller.loadAll,
+                          onDismiss: _controller.clearSyncWarning,
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       SleepSummaryCard(
                         summary: _controller.weeklySummary,
                         sleepWindow: _controller.sleepWindow,
@@ -280,6 +288,14 @@ class _SleepPageState extends State<SleepPage> {
             _ActionErrorBanner(
               message: _controller.actionError!,
               onDismiss: _controller.clearActionError,
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (_controller.syncWarning != null) ...[
+            _SyncWarningBanner(
+              message: _controller.syncWarning!,
+              onReload: _controller.loadAll,
+              onDismiss: _controller.clearSyncWarning,
             ),
             const SizedBox(height: 12),
           ],
@@ -577,6 +593,60 @@ class _ActionErrorBanner extends StatelessWidget {
               tooltip: 'Đóng thông báo lỗi',
               onPressed: onDismiss,
               icon: Icon(Icons.close, size: 18, color: scheme.onErrorContainer),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SyncWarningBanner extends StatelessWidget {
+  final String message;
+  final VoidCallback onReload;
+  final VoidCallback onDismiss;
+
+  const _SyncWarningBanner({
+    required this.message,
+    required this.onReload,
+    required this.onDismiss,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Semantics(
+      liveRegion: true,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: scheme.tertiaryContainer,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.sync_problem_outlined, color: scheme.onTertiaryContainer),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                message,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: scheme.onTertiaryContainer,
+                    ),
+              ),
+            ),
+            TextButton(
+              onPressed: onReload,
+              child: const Text('Tải lại'),
+            ),
+            IconButton(
+              tooltip: 'Đóng cảnh báo đồng bộ',
+              onPressed: onDismiss,
+              icon: Icon(
+                Icons.close,
+                size: 18,
+                color: scheme.onTertiaryContainer,
+              ),
             ),
           ],
         ),

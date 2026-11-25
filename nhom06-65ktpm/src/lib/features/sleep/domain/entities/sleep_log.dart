@@ -129,15 +129,22 @@ class SleepLog {
     );
   }
 
+  /// Payload trường dữ liệu gửi qua RPC `apply_log_sync` (không kèm cột do server quản lý).
+  Map<String, Object?> toSyncPayload() {
+    return {
+      'slept_at': sleptAt.toUtc().toIso8601String(),
+      'woke_at': wokeAt.toUtc().toIso8601String(),
+      'feeling': alertness.code,
+      'note': (note != null && note!.trim().isNotEmpty) ? note!.trim() : null,
+    };
+  }
+
   /// Ánh xạ tương thích bảng Supabase `public.sleep_logs`.
   Map<String, dynamic> toSupabaseMap() {
     return {
       'id': id,
       'owner_uid': ownerUid,
-      'slept_at': sleptAt.toUtc().toIso8601String(),
-      'woke_at': wokeAt.toUtc().toIso8601String(),
-      'feeling': alertness.code,
-      'note': (note != null && note!.trim().isNotEmpty) ? note!.trim() : null,
+      ...toSyncPayload(),
       'created_at': createdAt.toUtc().toIso8601String(),
       'updated_at': updatedAt.toUtc().toIso8601String(),
       'version': version,

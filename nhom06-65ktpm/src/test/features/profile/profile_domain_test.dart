@@ -83,6 +83,49 @@ void main() {
     );
   });
 
+  test('the current and legacy movement codes both exclude jump rope', () {
+    const filter = CatalogHardFilter();
+    final rope = SampleCatalogFixture.sampleExercises.singleWhere(
+      (exercise) => exercise.slug == 'jump-rope',
+    );
+    HealthProfile withLimits(Iterable<String> limits) => HealthProfile(
+      adultConfirmed: true,
+      timeZone: 'Asia/Ho_Chi_Minh',
+      goal: ProfileGoal.regularActivity,
+      activityLevel: ActivityLevel.advanced,
+      sessionMinutes: 45,
+      sessionsPerWeek: 3,
+      equipment: const ['jump_rope'],
+      movementLimits: limits,
+    );
+    expect(
+      filter
+          .filterExercises(
+            catalog: [rope],
+            profile: withLimits(const []).toRecommendationProfile(),
+          )
+          .eligibleItems,
+      [rope],
+    );
+    expect(
+      HealthProfile.movementOptions,
+      contains('high_intensity_restricted'),
+    );
+    for (final code in ['high_intensity_restricted', 'high_impact']) {
+      final profile = withLimits([code]);
+      expect(profile.movementLimits, {'high_intensity_restricted'});
+      final result = filter.filterExercises(
+        catalog: [rope],
+        profile: profile.toRecommendationProfile(),
+      );
+      expect(result.eligibleItems, isEmpty);
+      expect(
+        result.excludedItems.single.reasons.join(' '),
+        contains('high_intensity_restricted'),
+      );
+    }
+  });
+
   test(
     'overnight work reserves both travel legs and skips weekly exceptions',
     () {

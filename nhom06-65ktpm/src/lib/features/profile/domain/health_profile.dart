@@ -43,7 +43,11 @@ class HealthProfile {
   }) : equipment = Set.unmodifiable(equipment),
        preferredSports = Set.unmodifiable(preferredSports),
        dislikedSports = Set.unmodifiable(dislikedSports),
-       movementLimits = Set.unmodifiable(movementLimits),
+       movementLimits = Set.unmodifiable(
+         movementLimits.map(
+           (code) => code == 'high_impact' ? 'high_intensity_restricted' : code,
+         ),
+       ),
        allergens = Set.unmodifiable(allergens),
        avoidedIngredients = Set.unmodifiable(avoidedIngredients);
 
@@ -105,7 +109,7 @@ class HealthProfile {
     'shoulder_pain': 'Tránh tải lên vai',
     'ankle_injury': 'Tránh tải lên cổ chân',
     'lower_back_strain': 'Tránh tải lên lưng dưới',
-    'high_impact': 'Tránh bài tác động mạnh',
+    'high_intensity_restricted': 'Tránh bài cường độ cao hoặc tác động mạnh',
   };
   static const allergenOptions = {
     'peanut': 'Đậu phộng',

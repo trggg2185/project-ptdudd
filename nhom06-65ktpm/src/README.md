@@ -2,7 +2,7 @@
 
 ## Bắt đầu tại đây — dành cho thành viên và AI của thành viên
 
-**Issue #1 bổ sung màn hình đăng nhập và phiên Firebase trên Android/Web.** Ứng dụng mở màn hình đăng nhập khi chưa có phiên và hiển thị quyền truy cập Supabase sau khi đăng nhập. Nhánh hiện tại cũng đã hoàn thiện chức năng **Thói quen, Check-in và Chuỗi kỷ luật (Streak)** theo Issue #4, hỗ trợ kết nối Supabase qua `SupabaseHabitRepository` hoặc chế độ Demo ngoại tuyến (In-Memory), cùng nền tảng SQLite và sync worker trong `lib/core/`. Migration schema/RLS/Storage và migration sync hiện có trong `supabase/`, nhưng chưa được áp dụng hoặc kiểm chứng đầy đủ trên project cloud. Các phần Profile/Planner/Activity/Nutrition do từng thành viên tiếp tục hoàn thiện theo phân công.
+**Bản tích hợp issue #1, #4, #7 và #10.** Trên Android/Web, ứng dụng đăng nhập bằng Firebase và mở màn hình **Thói quen** khi tài khoản có quyền truy cập dữ liệu. SQLite và sync worker nằm trong `lib/core/`. Bộ gợi ý đã có danh mục mẫu, bộ lọc, xếp hạng và giao diện xem trước riêng. Luồng gợi ý dùng hồ sơ người dùng và việc gắn hàng đợi SQLite vào UI thuộc bước tích hợp tiếp theo.
 
 AI đọc [AGENTS.md](AGENTS.md) trước khi sửa mã, rồi đọc issue được giao và các phần liên quan trong README. Các mục 1–11 bên dưới là **đặc tả/kế hoạch**, không phải danh sách tính năng đã hoàn thành.
 
@@ -66,7 +66,7 @@ Android: chạy `flutter devices`, bật USB debugging nếu dùng điện tho�
 
 **Khi chạy lần đầu**, HealthyLife hiển thị nút đăng nhập bằng Email/Password hoặc Google. Nếu Firebase đã lưu phiên trên thiết bị/trình duyệt, ứng dụng mở màn hình **Phiên đăng nhập**. Chọn **Đăng xuất** để thử tài khoản khác. Chạy được luồng đăng nhập chưa kiểm chứng toàn bộ Firebase Auth, Supabase JWT/RLS hoặc nghiệp vụ. Đã có kiểm thử tập trung cho SQLite và sync worker; hướng dẫn chạy và phạm vi kiểm thử ở mục 4.4. Thành viên làm hồ sơ và lịch tập nối màn hình của mình vào sau phiên đăng nhập khi tích hợp. Các issue khác vẫn cần bổ sung kiểm thử phù hợp, không ghi “tests passed” nếu chưa chạy test.
 
-**Module Thói quen & Kỷ luật:** Khi chạy ứng dụng (hoặc chạy độc lập với `habitRepository`), màn hình quản lý thói quen (`HabitsPage`) sẽ hiển thị trực quan cùng bộ dữ liệu mẫu (`SampleHabitsFixture`). Bạn có thể thử nghiệm đầy đủ các tính năng: thêm/sửa/xóa thói quen, chọn các chu kỳ lặp khác nhau, check-in hoàn thành, bỏ qua có lý do, tạm dừng/tiếp tục thói quen (bảo toàn chuỗi kỷ luật), xem tiến độ ngày, và xem chuỗi kỷ luật (Streak). Chạy kiểm thử tự động toàn module bằng lệnh: `flutter test --no-pub`. Giới hạn backend: Module chạy ở chế độ **Demo ngoại tuyến (In-Memory)** khi Supabase chưa khởi tạo; dữ liệu tạm thời này nằm trên RAM và sẽ làm mới khi khởi động lại ứng dụng. Khi backend Supabase được khởi tạo (`Supabase.instance.isInitialized == true`), `SupabaseHabitRepository` sẽ tự động kết nối, đồng bộ hai chiều và báo lỗi rõ ràng qua `HabitSyncException` nếu gặp sự cố mạng hoặc quyền truy cập.
+**Module Thói quen & Kỷ luật.** Đăng nhập bằng tài khoản có claim `role: authenticated` và chọn **Mở thói quen**. Màn hình dùng UID Firebase của phiên hiện tại để tải dữ liệu Supabase. Khi lưu thói quen đầu tiên, app tạo hàng hồ sơ tối thiểu nếu chưa có. Thay đổi lịch lặp có hiệu lực từ ngày địa phương tiếp theo. Nếu khởi tạo backend thất bại, ứng dụng hiển thị nút **Thử lại**. Các test dùng `InMemoryHabitRepository` cho demo và dữ liệu giả. Màn hình thói quen hiện cần mạng để lưu lên Supabase.
 
 **Module Nhật ký vận động và GPS (Issue #8):** mở từ nút chạy bộ trên `HabitsPage` hoặc nút “Nhật ký vận động” sau đăng nhập. Chọn môn, nhập cảm nhận, dùng `Start/Pause/Resume/Stop` để ghi phiên GPS; khi ứng dụng ra nền, luồng ghi GPS tự tạm dừng. Điểm có độ chính xác lớn hơn 30 mét hoặc trùng gần nhau được bỏ qua, quãng đường được tính bằng Haversine và thời gian Pause không cộng vào thời lượng. Khi không có vị trí hoặc người dùng từ chối quyền, phần nhập thủ công vẫn lưu thời lượng. Tuyến đường chỉ được lưu khi bật “Lưu tuyến đường”. Bản demo dùng `InMemoryActivityRepository`; `SupabaseActivityRepository` ghi `activity_sessions` và `route_points` đã khai báo trong migration.
 
@@ -114,9 +114,31 @@ Nếu chưa có keystore, tạo qua quy trình build debug của Flutter/Android
 
 Khi cấp quyền thử, kiểm tra Firebase Project ID và UID của tài khoản trong Console, rồi từ môi trường quản trị đã xác thực dùng `getAuth().getUser(uid)` và `setCustomUserClaims(uid, {...user.customClaims, role: 'authenticated'})`. Dùng tài khoản thử, giữ thông tin quản trị ở môi trường server và dùng UID lấy từ bản ghi Firebase đã xác minh.
 
-**Hà — issue #7:** migration schema/RLS/Storage, migration RPC xử lý xung đột và seed đã có trong `supabase/`; SQLite queue và sync worker đã có trong `lib/core/`. Firebase UID **là chuỗi**, nên owner_uid/user_uid dùng TEXT; RLS so với `auth.jwt()->>'sub'`, không ép sang UUID bằng `auth.uid()`. Các test hiện dùng SQLite FFI và fake transport, chưa xác minh RLS/RPC thực tế. Cần review, áp dụng migrations/seed và kiểm thử trên đúng project trước khi xác nhận deploy. Không mở policy cho mọi người hoặc tắt RLS để cho app chạy.
+**Hà — issue #7.** Firebase UID là chuỗi. Các bảng dùng `owner_uid` kiểu TEXT và RLS dùng `auth.jwt()->>'sub'`. SQLite queue và worker được kiểm thử bằng SQLite FFI và transport giả. Phép thử PostgreSQL cục bộ dùng JWT mô phỏng để kiểm tra quyền theo UID, idempotency và xung đột phiên bản.
 
-**Kiểm chứng đã làm:** một tài khoản Firebase tạm đăng ký và đăng nhập thành công bằng Email/Password. Sau khi cấp claim `role: authenticated` và đăng nhập lại, JWT của tài khoản đến được Supabase Data API. Yêu cầu đọc tên bảng thử chưa tồn tại nhận `PGRST205` và JWT có chữ ký sai nhận `401 PGRST301`. Tài khoản thử đã được xóa và phép thử không tạo bảng. Đây là phép thử cấu hình xác thực ở API.
+#### Nhóm trưởng chuẩn bị dữ liệu dùng thử
+
+1. Trong Firebase `healthy-life-group-6`, dùng các app Android/Web đã đăng ký. Nếu Android build trên máy khác cần Google Sign-In, thêm SHA-1 của keystore ký bản đó vào app `vn.edu.nhom06.healthylife`. Web cần authorized domain khi chạy trên miền mới.
+2. Dùng Firebase Admin SDK trong môi trường quản trị để thêm `role: 'authenticated'` vào custom claims của từng tài khoản thử cần truy cập dữ liệu. Giữ các claims hiện có. Sau khi cấp, người dùng chọn **Kiểm tra lại quyền** để làm mới JWT.
+3. Trong Supabase `vspyxavkdqqlpxodvqvb`, kiểm tra Third-Party Auth trỏ tới `healthy-life-group-6`. Với project chưa có schema HealthyLife, chạy lần lượt các file SQL bên dưới trong SQL Editor.
+   1. [Schema, RLS và bucket](supabase/migrations/20261121_000001_initial_healthy_life_schema.sql)
+   2. [RPC và xử lý xung đột](supabase/migrations/20261122_000002_log_sync_conflicts.sql)
+   3. [Dữ liệu danh mục và kiểm tra UID khi đồng bộ](supabase/migrations/20261123_000003_catalog_and_sync_integration.sql)
+   4. [Seed 10 môn tập và 10 món ăn](supabase/seed/20261121_initial_catalog.sql)
+4. Xác nhận bucket `meal-images` ở chế độ riêng tư. Dùng hai tài khoản thử để tạo và check-in thói quen, rồi kiểm tra mỗi tài khoản chỉ thấy dữ liệu của mình. Nếu nhóm đã quản lý migrations bằng Supabase CLI, dùng lịch sử migration của nhóm để áp dụng các file còn thiếu.
+
+Kiểm tra trạng thái schema trước hoặc sau khi áp dụng bằng truy vấn chỉ đọc trong SQL Editor.
+
+```sql
+select to_regclass('public.profiles') as profiles,
+       to_regclass('public.habits') as habits,
+       to_regclass('public.sync_receipts') as sync_receipts,
+       to_regprocedure(
+         'public.apply_log_sync(uuid,text,uuid,text,jsonb,integer,text)'
+       ) as sync_rpc;
+```
+
+**Kiểm chứng trên project nhóm.** Supabase đã có schema, RPC đồng bộ, bucket riêng tư `meal-images` và seed 10 môn tập, 10 món ăn. Hai tài khoản Firebase tạm dùng JWT đã kiểm tra cách ly thói quen, check-in và ảnh theo UID qua Data API và Storage. Phép thử cũng kiểm tra gửi lại thao tác, JWT sai UID và xung đột phiên bản. Tài khoản và dữ liệu thử đã được dọn. Luồng này được kiểm tra qua API.
 
 **Cấu hình mẫu cho môi trường thử riêng.** Nhóm dùng các giá trị sẵn có trong `firebase_options.dart`, `google-services.json` và `backend_config.dart`. Nếu nhóm thống nhất thử trên một cặp Firebase–Supabase khác, sinh cấu hình Firebase cho đúng app Android/Web của cặp đó và dùng các biến client tương ứng trong `backend_config.dart`:
 
@@ -269,7 +291,7 @@ Supabase PostgreSQL lưu dữ liệu nghiệp vụ; Storage bucket riêng tư l�
 
 Android dùng plugin `sqflite` (SQLite đi kèm Android, không cần cài server SQLite riêng). `lib/core/local_database.dart` khởi tạo `healthylife.db` trong thư mục database riêng của ứng dụng, tạo bảng `local_records` và `sync_queue`, đồng thời cung cấp thao tác ghi/xóa cục bộ trong transaction. Hàng đợi được phân vùng theo Firebase UID; mỗi thay đổi có UUID để retry cùng operation ID không nhân đôi, và chỉ được lấy/xác nhận theo UID đang đăng nhập. Không gọi các thao tác này trước khi có Firebase UID đã xác thực.
 
-`lib/core/local_sync_worker.dart` gửi queue nhật ký qua RPC `apply_log_sync` trong migration `20261122_000002_log_sync_conflicts.sql`; phải áp dụng migration này lên Supabase trước khi dùng worker. Server lưu receipt theo `(owner_uid, operation_id)`, áp dụng thao tác một lần và trả lại cùng kết quả khi retry. Mỗi thay đổi dùng `base_version`; cập nhật/xóa chỉ thành công nếu server còn đúng phiên bản đó. Khi có conflict, worker ném `SyncConflictException`, giữ queue và không ghi đè. Caller có thể chủ động chọn `keepLocalChanges` (tạo operation UUID mới trên phiên bản server mới) hoặc `acceptServerChange`. Habit log dùng unique key `(owner_uid, habit_id, local_date)` để ngăn hai check-in cho cùng ngày. RPC chỉ hỗ trợ `habit_log`, `activity_session`, `meal_log`, `sleep_log`. Trong giai đoạn chuyển đổi, migration giữ quyền `insert`, `update`, `delete` cho role `authenticated` kèm RLS; các repository mới nên chuyển sang RPC rồi mới thu hồi quyền ghi trực tiếp.
+`lib/core/local_sync_worker.dart` gửi queue nhật ký qua RPC `apply_log_sync`. Migration `20261123_000003_catalog_and_sync_integration.sql` bổ sung kiểm tra UID của hàng đợi với JWT tại thời điểm xử lý và tăng phiên bản cho cả cập nhật trực tiếp. Server lưu receipt theo `(owner_uid, operation_id)` để trả cùng kết quả khi retry. Cập nhật và xóa từ queue kiểm tra `base_version`. Khi xung đột, worker giữ queue và trả `SyncConflictException`. Caller có thể chọn `keepLocalChanges` hoặc `acceptServerChange`. Habit log dùng khóa duy nhất `(owner_uid, habit_id, local_date)`. RPC hỗ trợ `habit_log`, `activity_session`, `meal_log` và `sleep_log`.
 
 #### Chạy kiểm thử SQLite và sync worker
 

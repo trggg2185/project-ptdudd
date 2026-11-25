@@ -7,9 +7,10 @@ import 'auth_feedback.dart';
 import 'sign_in_page.dart';
 
 class AuthGate extends StatefulWidget {
-  const AuthGate({super.key, required this.auth});
+  const AuthGate({super.key, required this.auth, this.habitsPageBuilder});
 
   final AuthRepository auth;
+  final Widget Function(AuthSession)? habitsPageBuilder;
 
   @override
   State<AuthGate> createState() => _AuthGateState();
@@ -52,28 +53,72 @@ class _AuthGateState extends State<AuthGate> {
         final session = snapshot.data;
         return session == null
             ? SignInPage(auth: widget.auth)
-            : _SessionPage(
+            : _SessionNavigator(
                 key: ValueKey(session.uid),
                 auth: widget.auth,
                 session: session,
+                habitsPageBuilder: widget.habitsPageBuilder,
               );
       },
     );
   }
 }
 
-class _SessionPage extends StatefulWidget {
-  const _SessionPage({super.key, required this.auth, required this.session});
+// Discard pages and their data when the Firebase user changes.
+class _SessionNavigator extends StatefulWidget {
+  const _SessionNavigator({
+    super.key,
+    required this.auth,
+    required this.session,
+    required this.habitsPageBuilder,
+  });
 
   final AuthRepository auth;
   final AuthSession session;
+  final Widget Function(AuthSession)? habitsPageBuilder;
+
+  @override
+  State<_SessionNavigator> createState() => _SessionNavigatorState();
+}
+
+class _SessionNavigatorState extends State<_SessionNavigator> {
+  final _navigator = GlobalKey<NavigatorState>();
+
+  @override
+  Widget build(BuildContext context) {
+    return NavigatorPopHandler<Object?>(
+      onPopWithResult: (result) => _navigator.currentState?.maybePop(result),
+      child: Navigator(
+        key: _navigator,
+        onGenerateRoute: (_) => MaterialPageRoute<void>(
+          builder: (context) => _SessionPage(
+            auth: widget.auth,
+            session: widget.session,
+            habitsPageBuilder: widget.habitsPageBuilder,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SessionPage extends StatefulWidget {
+  const _SessionPage({
+    required this.auth,
+    required this.session,
+    required this.habitsPageBuilder,
+  });
+
+  final AuthRepository auth;
+  final AuthSession session;
+  final Widget Function(AuthSession)? habitsPageBuilder;
 
   @override
   State<_SessionPage> createState() => _SessionPageState();
 }
 
 class _SessionPageState extends State<_SessionPage> {
-  late Future<String> _dataAccess = _checkAccess();
+  late Future<({bool allowed, String message})> _dataAccess = _checkAccess();
   bool _signingOut = false;
   String? _signOutError;
 
@@ -92,13 +137,15 @@ class _SessionPageState extends State<_SessionPage> {
     }
   }
 
-  Future<String> _checkAccess() async {
+  Future<({bool allowed, String message})> _checkAccess() async {
     try {
       final allowed = await widget.auth.hasDataAccess(refresh: true);
-      if (allowed) return 'Tài khoản đã được cấp quyền truy cập dữ liệu.';
-      return 'Tài khoản đang chờ quyền truy cập dữ liệu. Liên hệ nhóm trưởng để cấp quyền, rồi kiểm tra lại.';
+      return (
+        allowed: allowed,
+        message: allowed ? 'Tài khoản đã được cấp quyền truy cập dữ liệu.' : 'Tài khoản đang chờ quyền truy cập dữ liệu. Liên hệ nhóm trưởng để cấp quyền, rồi kiểm tra lại.',
+      );
     } catch (error) {
-      return authErrorMessage(error);
+      return (allowed: false, message: authErrorMessage(error));
     }
   }
 
@@ -121,7 +168,7 @@ class _SessionPageState extends State<_SessionPage> {
                   ),
                   if (widget.session.email case final email?) Text(email),
                   const SizedBox(height: 24),
-                  FutureBuilder<String>(
+                  FutureBuilder<({bool allowed, String message})>(
                     future: _dataAccess,
                     builder: (context, snapshot) => Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -130,7 +177,7 @@ class _SessionPageState extends State<_SessionPage> {
                           liveRegion: true,
                           child: Text(
                             snapshot.connectionState == ConnectionState.done
-                                ? snapshot.requireData
+                                ? snapshot.requireData.message
                                 : 'Đang kiểm tra quyền truy cập dữ liệu…',
                           ),
                         ),
@@ -146,6 +193,22 @@ class _SessionPageState extends State<_SessionPage> {
                                 }),
                           child: const Text('Kiểm tra lại quyền'),
                         ),
+                        if (widget.habitsPageBuilder case final buildHabits?)
+                          FilledButton(
+                            onPressed:
+                                snapshot.connectionState ==
+                                        ConnectionState.done &&
+                                    snapshot.data?.allowed == true &&
+                                    !_signingOut
+                                ? () => Navigator.of(context).push<void>(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) =>
+                                          buildHabits(widget.session),
+                                    ),
+                                  )
+                                : null,
+                            child: const Text('Mở thói quen'),
+                          ),
                       ],
                     ),
                   ),

@@ -45,7 +45,7 @@ class HealthyLifeApp extends StatefulWidget {
 }
 
 class _HealthyLifeAppState extends State<HealthyLifeApp> {
-  late final Future<AuthRepository?> _startup = _start();
+  late Future<AuthRepository?> _startup = _start();
 
   Future<AuthRepository?> _start() async {
     try {
@@ -89,12 +89,29 @@ class _HealthyLifeAppState extends State<HealthyLifeApp> {
               body: Center(child: CircularProgressIndicator()),
             );
           }
-          if (snapshot.data case final auth?) return AuthGate(auth: auth);
+          if (snapshot.data case final auth?) {
+            return AuthGate(
+              auth: auth,
+              habitsPageBuilder: (session) => HabitsPage(
+                repository: SupabaseHabitRepository(),
+                currentUserId: session.uid,
+              ),
+            );
+          }
 
-          // Nếu khởi tạo Firebase/backend không thành công (môi trường không cấu hình, offline demo):
-          return HabitsPage(
-            repository: resolveHabitRepository(),
-            currentUserId: 'demo-user-duc-2351170585',
+          return Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Không thể khởi động HealthyLife.'),
+                  TextButton(
+                    onPressed: () => setState(() => _startup = _start()),
+                    child: const Text('Thử lại'),
+                  ),
+                ],
+              ),
+            ),
           );
         },
       ),

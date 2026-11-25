@@ -124,7 +124,7 @@ class HabitLog {
       'local_date': DateHelper.formatIsoDate(date),
       'result': status == CheckInStatus.completed ? 'completed' : 'skipped',
       'skipped_reason': reason,
-      'logged_at': loggedAt.toIso8601String(),
+      'logged_at': loggedAt.toUtc().toIso8601String(),
     };
   }
 

@@ -72,7 +72,7 @@ class StreakCalculator {
 
       if (isPaused) {
         // Ngày trong khoảng tạm dừng: không sinh ngày đến hạn, đóng băng chuỗi (freeze streak)
-        cursor = cursor.add(const Duration(days: 1));
+        cursor = DateHelper.shiftDays(cursor, 1);
         continue;
       }
 
@@ -129,7 +129,7 @@ class StreakCalculator {
         // Không phá vỡ chuỗi hiện tại
       }
 
-      cursor = cursor.add(const Duration(days: 1));
+      cursor = DateHelper.shiftDays(cursor, 1);
     }
 
     return StreakInfo(
@@ -218,10 +218,10 @@ class StreakCalculator {
   }) {
     final norm = DateHelper.normalize(date);
     // Tính ngày Thứ Hai đầu tuần
-    final monday = norm.subtract(Duration(days: norm.weekday - 1));
+    final monday = DateHelper.shiftDays(norm, 1 - norm.weekday);
 
     return List.generate(7, (index) {
-      final currentDay = monday.add(Duration(days: index));
+      final currentDay = DateHelper.shiftDays(monday, index);
       final status = getDayStatus(habit, logs, currentDay, referenceDate: referenceDate);
       return DayStatusItem(date: currentDay, status: status);
     });

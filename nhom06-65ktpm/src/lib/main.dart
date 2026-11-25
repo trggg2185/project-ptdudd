@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/backend.dart';
+import 'features/activity/data/repositories/in_memory_activity_repository.dart';
+import 'features/activity/data/repositories/supabase_activity_repository.dart';
+import 'features/activity/domain/repositories/activity_repository.dart';
+import 'features/activity/presentation/pages/activity_page.dart';
 import 'features/auth/domain/auth_repository.dart';
 import 'features/auth/presentation/auth_gate.dart';
 import 'features/habits/data/repositories/in_memory_habit_repository.dart';
@@ -48,6 +52,20 @@ SleepRepository resolveSleepRepository({SleepRepository? customRepository}) {
   }
 
   return InMemorySleepRepository(seedWithSamples: true);
+}
+
+ActivityRepository resolveActivityRepository({
+  ActivityRepository? customRepository,
+}) {
+  if (customRepository != null) return customRepository;
+
+  try {
+    if (Supabase.instance.isInitialized) {
+      return SupabaseActivityRepository();
+    }
+  } catch (_) {}
+
+  return InMemoryActivityRepository();
 }
 
 void main() {
@@ -144,6 +162,10 @@ class _HealthyLifeAppState extends State<HealthyLifeApp> {
               sleepPageBuilder: (session) => SleepPage(
                 repository: SupabaseSleepRepository(),
                 currentUserId: session.uid,
+              ),
+              activityPageBuilder: (session) => ActivityPage(
+                repository: resolveActivityRepository(),
+                ownerUid: session.uid,
               ),
             );
           }

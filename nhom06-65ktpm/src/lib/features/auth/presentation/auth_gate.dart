@@ -10,11 +10,13 @@ class AuthGate extends StatefulWidget {
     required this.auth,
     this.habitsPageBuilder,
     this.sleepPageBuilder,
+    this.activityPageBuilder,
   });
 
   final AuthRepository auth;
   final Widget Function(AuthSession)? habitsPageBuilder;
   final Widget Function(AuthSession)? sleepPageBuilder;
+  final Widget Function(AuthSession)? activityPageBuilder;
 
   @override
   State<AuthGate> createState() => _AuthGateState();
@@ -63,6 +65,7 @@ class _AuthGateState extends State<AuthGate> {
                 session: session,
                 habitsPageBuilder: widget.habitsPageBuilder,
                 sleepPageBuilder: widget.sleepPageBuilder,
+                activityPageBuilder: widget.activityPageBuilder,
               );
       },
     );
@@ -77,12 +80,14 @@ class _SessionNavigator extends StatefulWidget {
     required this.session,
     required this.habitsPageBuilder,
     required this.sleepPageBuilder,
+    required this.activityPageBuilder,
   });
 
   final AuthRepository auth;
   final AuthSession session;
   final Widget Function(AuthSession)? habitsPageBuilder;
   final Widget Function(AuthSession)? sleepPageBuilder;
+  final Widget Function(AuthSession)? activityPageBuilder;
 
   @override
   State<_SessionNavigator> createState() => _SessionNavigatorState();
@@ -103,6 +108,7 @@ class _SessionNavigatorState extends State<_SessionNavigator> {
             session: widget.session,
             habitsPageBuilder: widget.habitsPageBuilder,
             sleepPageBuilder: widget.sleepPageBuilder,
+            activityPageBuilder: widget.activityPageBuilder,
           ),
         ),
       ),
@@ -116,12 +122,14 @@ class _SessionPage extends StatefulWidget {
     required this.session,
     required this.habitsPageBuilder,
     required this.sleepPageBuilder,
+    required this.activityPageBuilder,
   });
 
   final AuthRepository auth;
   final AuthSession session;
   final Widget Function(AuthSession)? habitsPageBuilder;
   final Widget Function(AuthSession)? sleepPageBuilder;
+  final Widget Function(AuthSession)? activityPageBuilder;
 
   @override
   State<_SessionPage> createState() => _SessionPageState();
@@ -236,6 +244,26 @@ class _SessionPageState extends State<_SessionPage> {
                                     )
                                   : null,
                               child: const Text('Mở nhật ký ngủ'),
+                            ),
+                          ),
+                        if (widget.activityPageBuilder
+                            case final buildActivity?)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: FilledButton(
+                              onPressed:
+                                  snapshot.connectionState ==
+                                          ConnectionState.done &&
+                                      snapshot.data?.allowed == true &&
+                                      !_signingOut
+                                  ? () => Navigator.of(context).push<void>(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) =>
+                                            buildActivity(widget.session),
+                                      ),
+                                    )
+                                  : null,
+                              child: const Text('Nhật ký vận động'),
                             ),
                           ),
                       ],

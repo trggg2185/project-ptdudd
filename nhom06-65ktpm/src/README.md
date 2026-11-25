@@ -70,6 +70,17 @@ Android: chạy `flutter devices`, bật USB debugging nếu dùng điện tho�
 
 **Module Giấc ngủ & Lịch sinh hoạt (Issue #5).** Sau khi đăng nhập tài khoản có claim `role: authenticated`, chọn **Mở nhật ký ngủ** (chi tiết cấu trúc, phím tắt và phạm vi kiểm thử ở [lib/features/sleep/README.md](lib/features/sleep/README.md)). Hỗ trợ nhập giờ ngủ/thức qua ngày (+1 ngày), ca đêm ngủ ban ngày, mức tỉnh táo tự đánh giá (1–5), đặt khoảng ngủ mong muốn không ép mốc 22:00 và lịch sinh hoạt 24 giờ responsive Android/Web có nhãn truy cập và thao tác bàn phím. Nhật ký ngủ chỉ dựa trên dữ liệu tự khai báo, không suy ra giấc ngủ thật từ việc tắt màn hình điện thoại. `SupabaseSleepRepository` ghi/xóa `public.sleep_logs` qua RPC `apply_log_sync` (`SupabaseSyncTransport`) để kiểm tra phiên bản và xung đột, đọc `public.availability_blocks`, và cập nhật `sleep_start`/`sleep_end` trong `public.profiles.living_conditions` qua RPC `upsert_sleep_window` (có fallback compare-and-swap khi [migration 000004](supabase/migrations/20261125_000004_sleep_constraints_and_window_merge.sql) chưa được duyệt và triển khai lên cloud). Kiểm thử cục bộ chạy bằng `flutter test test/features/sleep` (dùng `InMemorySleepRepository` và `SyncTransport` giả, không xác minh RLS/RPC trên cloud).
 
+**Module Nhật ký vận động và GPS (Issue #8):** mở từ nút “Nhật ký vận động” sau đăng nhập khi tài khoản có claim `role: authenticated`. Chọn môn, nhập cảm nhận, dùng `Start/Pause/Resume/Stop` để ghi phiên GPS; khi ứng dụng ra nền, luồng ghi GPS tự tạm dừng. Điểm có độ chính xác lớn hơn 30 mét hoặc trùng gần nhau được bỏ qua, quãng đường được tính bằng Haversine và thời gian Pause không cộng vào thời lượng. Khi không có vị trí hoặc người dùng từ chối quyền, phần nhập thủ công vẫn lưu thời lượng. Tuyến đường chỉ được lưu khi bật “Lưu tuyến đường”. Bản demo dùng `InMemoryActivityRepository`; `SupabaseActivityRepository` ghi `activity_sessions` và `route_points` đã khai báo trong migration.
+
+Chạy kiểm thử activity:
+
+```bash
+flutter test test/features/activity/activity_session_tracker_test.dart --no-pub
+flutter test test/features/activity/activity_page_test.dart --no-pub
+```
+
+Kiểm thử Android thật: bật Location, cấp quyền khi app hỏi, chạy phiên ngoài trời, Pause ít nhất 30 giây rồi resume và xác nhận quãng đường không tăng trong khoảng đó, Stop và lưu có/không lưu tuyến, đưa app ra nền để xác nhận GPS dừng, kiểm tra mất dịch vụ hoặc quyền để xác nhận luồng nhập tay vẫn hoạt động. Ghi sai số GPS quan sát và tình huống mất tín hiệu trong báo cáo PR; không lưu tọa độ thật của người dùng vào repository.
+
 Kiểm tra trên máy nhóm trưởng đã qua `flutter analyze --no-pub`, `flutter build web --no-pub` và `flutter build apk --debug --no-pub`. APK debug được tạo cục bộ trong `build/app/outputs/flutter-apk/`.
 
 Thành viên phát triển ứng dụng dùng cấu hình client trong kho và tài khoản thử HealthyLife. Firebase CLI và Supabase CLI chỉ cần cho thành viên phụ trách quản trị cloud. Nếu chưa thấy màn hình đăng nhập, kiểm tra đang chạy bản có issue #1 trước khi thay đổi cấu hình.

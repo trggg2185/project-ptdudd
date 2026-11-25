@@ -6,14 +6,34 @@ import '../../domain/repositories/activity_repository.dart';
 
 class SupabaseActivityRepository implements ActivityRepository {
   SupabaseActivityRepository({SupabaseClient? client})
-    : _client = client ?? Supabase.instance.client;
+    : _client = client ?? _resolveClient();
 
-  final SupabaseClient _client;
+  static SupabaseClient? _resolveClient() {
+    try {
+      if (Supabase.instance.isInitialized) {
+        return Supabase.instance.client;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  final SupabaseClient? _client;
   static const Uuid _uuid = Uuid();
 
   @override
   Future<void> saveSession(ActivitySession session) async {
-    await _client.from('activity_sessions').upsert({
+    final client = _client;
+    if (client == null) {
+      throw StateError('Supabase chưa được khởi tạo');
+    }
+    await client
+        .from('profiles')
+        .upsert(
+          {'owner_uid': session.ownerUid},
+          onConflict: 'owner_uid',
+          ignoreDuplicates: true,
+        );
+    await client.from('activity_sessions').upsert({
       'id': session.id,
       'owner_uid': session.ownerUid,
       'activity_name': session.activityName,
@@ -25,14 +45,14 @@ class SupabaseActivityRepository implements ActivityRepository {
       'route_saved': session.routeSaved,
     });
 
-    await _client
+    await client
         .from('route_points')
         .delete()
         .eq('owner_uid', session.ownerUid)
         .eq('session_id', session.id);
 
     if (session.routeSaved && session.route.isNotEmpty) {
-      await _client
+      await client
           .from('route_points')
           .insert(
             session.route
@@ -54,7 +74,9 @@ class SupabaseActivityRepository implements ActivityRepository {
 
   @override
   Future<List<ActivitySession>> getSessions({required String ownerUid}) async {
-    final rows = await _client
+    final client = _client;
+    if (client == null) return const [];
+    final rows = await client
         .from('activity_sessions')
         .select()
         .eq('owner_uid', ownerUid)
@@ -64,7 +86,7 @@ class SupabaseActivityRepository implements ActivityRepository {
       final routeSaved = row['route_saved'] as bool? ?? false;
       var route = <GpsPoint>[];
       if (routeSaved) {
-        final pointRows = await _client
+        final pointRows = await client
             .from('route_points')
             .select()
             .eq('owner_uid', ownerUid)

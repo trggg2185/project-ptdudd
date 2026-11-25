@@ -81,15 +81,30 @@ class ActivityController extends ChangeNotifier {
   }
 
   void stopGps(DateTime now) {
-    tracker.stop();
+    tracker.stop(now);
     gpsStatus = 'Đã dừng GPS';
+    notifyListeners();
+  }
+
+  void resetGps() {
+    tracker.status = ActivityStatus.idle;
+    tracker.startedAt = null;
+    tracker.pausedAt = null;
+    tracker.stoppedAt = null;
+    tracker.pausedDuration = Duration.zero;
+    tracker.route.clear();
+    tracker.estimatedDistanceMeters = 0;
+    routeSaved = false;
+    gpsStatus = 'GPS chưa bắt đầu';
+    errorMessage = null;
     notifyListeners();
   }
 
   Future<void> saveGpsSession(DateTime endedAt) async {
     final startedAt = tracker.startedAt;
     if (startedAt == null) return;
-    final duration = tracker.durationAt(endedAt);
+    final effectiveEndedAt = tracker.stoppedAt ?? endedAt;
+    final duration = tracker.durationAt(effectiveEndedAt);
     final session = ActivitySession(
       id: const Uuid().v4(),
       ownerUid: ownerUid,
@@ -99,7 +114,7 @@ class ActivityController extends ChangeNotifier {
       feeling: feeling,
       routeSaved: routeSaved,
       startedAt: startedAt,
-      endedAt: endedAt,
+      endedAt: effectiveEndedAt,
       route: routeSaved ? List<GpsPoint>.from(tracker.route) : const [],
     );
     await _save(session);

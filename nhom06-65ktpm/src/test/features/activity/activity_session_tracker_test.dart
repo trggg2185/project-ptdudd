@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:healthylife/features/activity/domain/entities/activity_session.dart';
 import 'package:healthylife/features/activity/domain/logic/activity_session_tracker.dart';
 import 'package:healthylife/features/activity/data/repositories/in_memory_activity_repository.dart';
+import 'package:healthylife/features/activity/presentation/controllers/activity_controller.dart';
 
 void main() {
   group('ActivitySessionTracker', () {
@@ -79,6 +80,122 @@ void main() {
 
       expect(accepted, isNull);
       expect(tracker.route, isEmpty);
+    });
+
+    test('does not add distance across pause and resume', () {
+      final tracker = ActivitySessionTracker();
+      final started = DateTime(2026, 11, 25, 8);
+      tracker.start(started);
+
+      tracker.addPoint(
+        GpsPoint(
+          latitude: 10.762622,
+          longitude: 106.660172,
+          recordedAt: started,
+        ),
+      );
+      tracker.addPoint(
+        GpsPoint(
+          latitude: 10.763522,
+          longitude: 106.660172,
+          recordedAt: started.add(const Duration(seconds: 30)),
+        ),
+      );
+      final firstSegmentDistance = tracker.estimatedDistanceMeters;
+
+      tracker.pause(started.add(const Duration(minutes: 1)));
+      tracker.resume(started.add(const Duration(minutes: 20)));
+      tracker.addPoint(
+        GpsPoint(
+          latitude: 10.770000,
+          longitude: 106.670000,
+          recordedAt: started.add(const Duration(minutes: 21)),
+        ),
+      );
+      tracker.addPoint(
+        GpsPoint(
+          latitude: 10.770900,
+          longitude: 106.670000,
+          recordedAt: started.add(const Duration(minutes: 21, seconds: 30)),
+        ),
+      );
+
+      expect(
+        tracker.estimatedDistanceMeters,
+        greaterThan(firstSegmentDistance + 90),
+      );
+      expect(
+        tracker.estimatedDistanceMeters,
+        lessThan(firstSegmentDistance + 110),
+      );
+    });
+
+    test('stop freezes duration while recording', () {
+      final tracker = ActivitySessionTracker();
+      final started = DateTime(2026, 11, 25, 8);
+      tracker.start(started);
+      final stopped = started.add(const Duration(minutes: 10));
+      tracker.stop(stopped);
+
+      expect(
+        tracker.durationAt(started.add(const Duration(minutes: 30))),
+        const Duration(minutes: 10),
+      );
+    });
+
+    test('stop while paused includes the final pause duration', () {
+      final tracker = ActivitySessionTracker();
+      final started = DateTime(2026, 11, 25, 8);
+      tracker.start(started);
+      tracker.pause(started.add(const Duration(minutes: 5)));
+      tracker.stop(started.add(const Duration(minutes: 25)));
+
+      expect(tracker.pausedDuration, const Duration(minutes: 20));
+      expect(
+        tracker.durationAt(started.add(const Duration(hours: 1))),
+        const Duration(minutes: 5),
+      );
+    });
+
+    test('GPS save respects routeSaved setting', () async {
+      final repository = InMemoryActivityRepository();
+      final controller = ActivityController(
+        repository: repository,
+        ownerUid: 'route-test-user',
+      );
+      final started = DateTime(2026, 11, 25, 8);
+      controller.startGps(started);
+      controller.addGpsPoint(
+        GpsPoint(
+          latitude: 10.762622,
+          longitude: 106.660172,
+          recordedAt: started,
+        ),
+      );
+      controller.stopGps(started.add(const Duration(minutes: 5)));
+      await controller.saveGpsSession(started.add(const Duration(minutes: 30)));
+
+      var sessions = await repository.getSessions(ownerUid: 'route-test-user');
+      expect(sessions.single.routeSaved, isFalse);
+      expect(sessions.single.route, isEmpty);
+
+      controller.resetGps();
+      controller.startGps(started);
+      controller.setRouteSaved(true);
+      controller.addGpsPoint(
+        GpsPoint(
+          latitude: 10.762622,
+          longitude: 106.660172,
+          recordedAt: started,
+        ),
+      );
+      controller.stopGps(started.add(const Duration(minutes: 5)));
+      await controller.saveGpsSession(started.add(const Duration(minutes: 30)));
+
+      sessions = await repository.getSessions(ownerUid: 'route-test-user');
+      expect(sessions, hasLength(2));
+      expect(sessions.first.routeSaved, isTrue);
+      expect(sessions.first.route, isNotEmpty);
     });
 
     test('in-memory repository can save and load sessions', () async {

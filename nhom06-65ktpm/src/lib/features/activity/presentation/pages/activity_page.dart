@@ -64,34 +64,46 @@ class _ActivityPageState extends State<ActivityPage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive) {
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
       if (_controller.tracker.status == ActivityStatus.recording) {
         _controller.pauseGps(DateTime.now());
         _positionSubscription?.cancel();
         _positionSubscription = null;
+        _controller.setGpsStatus('GPS đã tạm dừng khi ra nền');
       }
     }
   }
 
   Future<bool> _ensureLocationPermission() async {
-    if (!await Geolocator.isLocationServiceEnabled()) {
-      _controller.setGpsStatus('Dịch vụ vị trí đang tắt');
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        _controller.setGpsStatus('Dịch vụ vị trí đang tắt');
+        return false;
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        _controller.setGpsStatus('Quyền GPS bị từ chối');
+        return false;
+      }
+      return true;
+    } catch (_) {
+      _controller.setGpsStatus(
+        'Không thể truy cập GPS. Bạn có thể nhập nhật ký thủ công.',
+      );
       return false;
     }
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever) {
-      _controller.setGpsStatus('Quyền GPS bị từ chối');
-      return false;
-    }
-    return true;
   }
 
   Future<void> _startGps() async {
     if (!await _ensureLocationPermission()) return;
+    await _positionSubscription?.cancel();
+    _positionSubscription = null;
     _controller.startGps(DateTime.now());
     _positionSubscription =
         Geolocator.getPositionStream(
@@ -101,6 +113,7 @@ class _ActivityPageState extends State<ActivityPage>
           ),
         ).listen(
           (position) {
+            _controller.setGpsStatus('Đang ghi GPS');
             _controller.addGpsPoint(
               GpsPoint(
                 latitude: position.latitude,
@@ -124,6 +137,8 @@ class _ActivityPageState extends State<ActivityPage>
 
   Future<void> _resumeGps() async {
     if (!await _ensureLocationPermission()) return;
+    await _positionSubscription?.cancel();
+    _positionSubscription = null;
     _controller.resumeGps(DateTime.now());
     _positionSubscription =
         Geolocator.getPositionStream(
@@ -132,6 +147,7 @@ class _ActivityPageState extends State<ActivityPage>
             distanceFilter: 5,
           ),
         ).listen((position) {
+          _controller.setGpsStatus('Đang ghi GPS');
           _controller.addGpsPoint(
             GpsPoint(
               latitude: position.latitude,
@@ -284,6 +300,12 @@ class _ActivityPageState extends State<ActivityPage>
                           key: const Key('save-gps-session'),
                           onPressed: _saveGpsSession,
                           child: const Text('Lưu phiên'),
+                        ),
+                        const SizedBox(height: 8),
+                        OutlinedButton(
+                          key: const Key('cancel-gps-session'),
+                          onPressed: _controller.resetGps,
+                          child: const Text('Hủy / Đặt lại phiên'),
                         ),
                       ],
                     ],

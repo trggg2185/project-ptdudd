@@ -9,23 +9,28 @@ class ActivitySessionTracker {
   ActivityStatus status = ActivityStatus.idle;
   DateTime? startedAt;
   DateTime? pausedAt;
+  DateTime? stoppedAt;
   final List<GpsPoint> route = [];
   double estimatedDistanceMeters = 0;
   Duration pausedDuration = Duration.zero;
+  bool _skipNextSegmentDistance = false;
 
   void start(DateTime now) {
     status = ActivityStatus.recording;
     startedAt = now;
     pausedAt = null;
+    stoppedAt = null;
     pausedDuration = Duration.zero;
     estimatedDistanceMeters = 0;
     route.clear();
+    _skipNextSegmentDistance = false;
   }
 
   void pause(DateTime now) {
     if (status != ActivityStatus.recording) return;
     status = ActivityStatus.paused;
     pausedAt = now;
+    _skipNextSegmentDistance = true;
   }
 
   void resume(DateTime now) {
@@ -33,6 +38,7 @@ class ActivitySessionTracker {
     pausedDuration += now.difference(pausedAt!);
     pausedAt = null;
     status = ActivityStatus.recording;
+    _skipNextSegmentDistance = true;
   }
 
   GpsPoint? addPoint(GpsPoint point) {
@@ -40,12 +46,13 @@ class ActivitySessionTracker {
     final accuracy = point.accuracyMeters;
     if (accuracy != null && accuracy > maximumAccuracyMeters) return null;
 
-    if (route.isNotEmpty) {
+    if (route.isNotEmpty && !_skipNextSegmentDistance) {
       final previous = route.last;
       final distance = haversineMeters(previous, point);
       if (distance < 2) return null;
       estimatedDistanceMeters += distance;
     }
+    _skipNextSegmentDistance = false;
     route.add(point);
     return point;
   }
@@ -54,6 +61,9 @@ class ActivitySessionTracker {
     final baseStartedAt = startedAt;
     if (baseStartedAt == null) return Duration.zero;
     var excluded = pausedDuration;
+    if (status == ActivityStatus.stopped && stoppedAt != null) {
+      now = stoppedAt!;
+    }
     if (status == ActivityStatus.paused && pausedAt != null) {
       excluded += now.difference(pausedAt!);
     }
@@ -61,8 +71,13 @@ class ActivitySessionTracker {
     return elapsed.isNegative ? Duration.zero : elapsed;
   }
 
-  void stop() {
+  void stop(DateTime now) {
     if (status == ActivityStatus.idle) return;
+    if (status == ActivityStatus.paused && pausedAt != null) {
+      pausedDuration += now.difference(pausedAt!);
+      pausedAt = null;
+    }
+    stoppedAt = now;
     status = ActivityStatus.stopped;
   }
 

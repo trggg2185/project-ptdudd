@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../activity/data/repositories/in_memory_activity_repository.dart';
+import '../../../activity/presentation/pages/activity_page.dart';
 import '../../../../core/utils/date_helper.dart';
 import '../../domain/entities/habit.dart';
 import '../../domain/entities/habit_log.dart';
@@ -55,6 +57,20 @@ class _HabitsPageState extends State<HabitsPage> {
           appBar: AppBar(
             title: const Text('Thói quen & Kỷ luật'),
             actions: [
+              IconButton(
+                icon: const Icon(Icons.directions_run),
+                tooltip: 'Nhật ký vận động',
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ActivityPage(
+                        repository: InMemoryActivityRepository(),
+                        ownerUid: widget.currentUserId,
+                      ),
+                    ),
+                  );
+                },
+              ),
               IconButton(
                 icon: const Icon(Icons.refresh),
                 tooltip: 'Tải lại dữ liệu',

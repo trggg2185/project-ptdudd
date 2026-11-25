@@ -68,6 +68,17 @@ Android: chạy `flutter devices`, bật USB debugging nếu dùng điện tho�
 
 **Module Thói quen & Kỷ luật:** Khi chạy ứng dụng (hoặc chạy độc lập với `habitRepository`), màn hình quản lý thói quen (`HabitsPage`) sẽ hiển thị trực quan cùng bộ dữ liệu mẫu (`SampleHabitsFixture`). Bạn có thể thử nghiệm đầy đủ các tính năng: thêm/sửa/xóa thói quen, chọn các chu kỳ lặp khác nhau, check-in hoàn thành, bỏ qua có lý do, tạm dừng/tiếp tục thói quen (bảo toàn chuỗi kỷ luật), xem tiến độ ngày, và xem chuỗi kỷ luật (Streak). Chạy kiểm thử tự động toàn module bằng lệnh: `flutter test --no-pub`. Giới hạn backend: Module chạy ở chế độ **Demo ngoại tuyến (In-Memory)** khi Supabase chưa khởi tạo; dữ liệu tạm thời này nằm trên RAM và sẽ làm mới khi khởi động lại ứng dụng. Khi backend Supabase được khởi tạo (`Supabase.instance.isInitialized == true`), `SupabaseHabitRepository` sẽ tự động kết nối, đồng bộ hai chiều và báo lỗi rõ ràng qua `HabitSyncException` nếu gặp sự cố mạng hoặc quyền truy cập.
 
+**Module Nhật ký vận động và GPS (Issue #8):** mở từ nút chạy bộ trên `HabitsPage` hoặc nút “Nhật ký vận động” sau đăng nhập. Chọn môn, nhập cảm nhận, dùng `Start/Pause/Resume/Stop` để ghi phiên GPS; khi ứng dụng ra nền, luồng ghi GPS tự tạm dừng. Điểm có độ chính xác lớn hơn 30 mét hoặc trùng gần nhau được bỏ qua, quãng đường được tính bằng Haversine và thời gian Pause không cộng vào thời lượng. Khi không có vị trí hoặc người dùng từ chối quyền, phần nhập thủ công vẫn lưu thời lượng. Tuyến đường chỉ được lưu khi bật “Lưu tuyến đường”. Bản demo dùng `InMemoryActivityRepository`; `SupabaseActivityRepository` ghi `activity_sessions` và `route_points` đã khai báo trong migration.
+
+Chạy kiểm thử activity:
+
+```bash
+flutter test test/features/activity/activity_session_tracker_test.dart --no-pub
+flutter test test/features/activity/activity_page_test.dart --no-pub
+```
+
+Kiểm thử Android thật: bật Location, cấp quyền khi app hỏi, chạy phiên ngoài trời, Pause ít nhất 30 giây rồi resume và xác nhận quãng đường không tăng trong khoảng đó, Stop và lưu có/không lưu tuyến, đưa app ra nền để xác nhận GPS dừng, kiểm tra mất dịch vụ hoặc quyền để xác nhận luồng nhập tay vẫn hoạt động. Ghi sai số GPS quan sát và tình huống mất tín hiệu trong báo cáo PR; không lưu tọa độ thật của người dùng vào repository.
+
 Kiểm tra trên máy nhóm trưởng đã qua `flutter analyze --no-pub`, `flutter build web --no-pub` và `flutter build apk --debug --no-pub`. APK debug được tạo cục bộ trong `build/app/outputs/flutter-apk/`.
 
 Thành viên phát triển ứng dụng dùng cấu hình client trong kho và tài khoản thử HealthyLife. Firebase CLI và Supabase CLI chỉ cần cho thành viên phụ trách quản trị cloud. Nếu chưa thấy màn hình đăng nhập, kiểm tra đang chạy bản có issue #1 trước khi thay đổi cấu hình.

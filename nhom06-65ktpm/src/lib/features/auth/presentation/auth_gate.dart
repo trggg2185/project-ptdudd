@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../activity/data/repositories/in_memory_activity_repository.dart';
+import '../../activity/presentation/pages/activity_page.dart';
 import '../domain/auth_repository.dart';
 import 'auth_feedback.dart';
 import 'sign_in_page.dart';
@@ -152,6 +154,23 @@ class _SessionPageState extends State<_SessionPage> {
                   FilledButton(
                     onPressed: _signingOut ? null : _signOut,
                     child: Text(_signingOut ? 'Đang đăng xuất…' : 'Đăng xuất'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: _signingOut
+                        ? null
+                        : () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => ActivityPage(
+                                  repository: InMemoryActivityRepository(),
+                                  ownerUid: widget.session.uid,
+                                ),
+                              ),
+                            );
+                          },
+                    icon: const Icon(Icons.directions_run),
+                    label: const Text('Nhật ký vận động'),
                   ),
                 ],
               ),

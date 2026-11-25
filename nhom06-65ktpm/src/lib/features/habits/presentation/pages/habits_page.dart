@@ -92,14 +92,9 @@ class _HabitsPageState extends State<HabitsPage> {
                         _buildEmptyState()
                       else
                         ..._controller.filteredHabits.map((habit) {
-                          final dayStatus = _controller.getDayStatusForHabit(
-                            habit,
-                          );
-                          final currentLog =
-                              _controller.selectedDateLogs[habit.id];
-                          final streakInfo =
-                              _controller.streakInfos[habit.id] ??
-                              const StreakInfo();
+                          final dayStatus = _controller.getDayStatusForHabit(habit);
+                          final currentLog = _controller.selectedDateLogs[habit.id];
+                          final streakInfo = _controller.streakInfos[habit.id] ?? const StreakInfo();
 
                           return HabitCard(
                             habit: habit,
@@ -118,8 +113,7 @@ class _HabitsPageState extends State<HabitsPage> {
                             ),
                             onUndo: () => _controller.undoCheckIn(habit.id),
                             onEdit: () => _openEditHabit(habit),
-                            onToggleActive: () =>
-                                _controller.toggleActive(habit.id),
+                            onToggleActive: () => _controller.toggleActive(habit.id),
                             onDelete: () => _controller.deleteHabit(habit.id),
                           );
                         }),
@@ -142,10 +136,7 @@ class _HabitsPageState extends State<HabitsPage> {
     final ratio = _controller.progressRatioForSelectedDate;
     final percent = (ratio * 100).toInt();
 
-    final isToday = DateHelper.isSameDay(
-      _controller.selectedDate,
-      DateTime.now(),
-    );
+    final isToday = DateHelper.isSameDay(_controller.selectedDate, DateTime.now());
     final dateLabel = isToday
         ? 'Hôm nay, ${DateHelper.formatVietnameseDate(_controller.selectedDate)}'
         : DateHelper.formatVietnameseDate(_controller.selectedDate);
@@ -186,11 +177,7 @@ class _HabitsPageState extends State<HabitsPage> {
                 ),
                 child: Text(
                   '$percent%',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
                 ),
               ),
             ],
@@ -200,8 +187,8 @@ class _HabitsPageState extends State<HabitsPage> {
             due == 0
                 ? 'Không có thói quen nào đến hạn'
                 : completed == due
-                ? '🎉 Xuất sắc! Hoàn thành 100% mục tiêu'
-                : 'Đã hoàn thành $completed trên $due thói quen',
+                    ? '🎉 Xuất sắc! Hoàn thành 100% mục tiêu'
+                    : 'Đã hoàn thành $completed trên $due thói quen',
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.bold,
@@ -310,11 +297,7 @@ class _HabitsPageState extends State<HabitsPage> {
           const SizedBox(height: 16),
           const Text(
             'Chưa có thói quen nào trong danh mục này',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.black54,
-            ),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black54),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
@@ -343,8 +326,7 @@ class _HabitsPageState extends State<HabitsPage> {
   Future<void> _openEditHabit(Habit habit) async {
     final result = await Navigator.of(context).push<dynamic>(
       MaterialPageRoute(
-        builder: (ctx) =>
-            HabitFormPage(habit: habit, ownerUid: widget.currentUserId),
+        builder: (ctx) => HabitFormPage(habit: habit, ownerUid: widget.currentUserId),
       ),
     );
 
@@ -356,16 +338,14 @@ class _HabitsPageState extends State<HabitsPage> {
   }
 
   void _openHabitDetail(Habit habit) {
-    Navigator.of(context)
-        .push(
-          MaterialPageRoute(
-            builder: (ctx) => HabitDetailPage(
-              habit: habit,
-              repository: widget.repository,
-              currentUserId: widget.currentUserId,
-            ),
-          ),
-        )
-        .then((_) => _controller.loadHabits());
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (ctx) => HabitDetailPage(
+          habit: habit,
+          repository: widget.repository,
+          currentUserId: widget.currentUserId,
+        ),
+      ),
+    ).then((_) => _controller.loadHabits());
   }
 }

@@ -56,6 +56,7 @@ class ActivityController extends ChangeNotifier {
   }
 
   void startGps(DateTime now) {
+    routeSaved = false;
     tracker.start(now);
     gpsStatus = 'Đang ghi GPS';
     errorMessage = null;
@@ -117,7 +118,10 @@ class ActivityController extends ChangeNotifier {
       endedAt: effectiveEndedAt,
       route: routeSaved ? List<GpsPoint>.from(tracker.route) : const [],
     );
-    await _save(session);
+    final saved = await _save(session);
+    if (saved) {
+      resetGps();
+    }
   }
 
   Future<void> saveManualSession({
@@ -141,7 +145,7 @@ class ActivityController extends ChangeNotifier {
     await _save(session);
   }
 
-  Future<void> _save(ActivitySession session) async {
+  Future<bool> _save(ActivitySession session) async {
     isLoading = true;
     errorMessage = null;
     notifyListeners();
@@ -149,9 +153,10 @@ class ActivityController extends ChangeNotifier {
       await repository.saveSession(session);
       sessions.removeWhere((item) => item.id == session.id);
       sessions.insert(0, session);
-      tracker.status = ActivityStatus.idle;
+      return true;
     } catch (error) {
       errorMessage = 'Không thể lưu nhật ký vận động: $error';
+      return false;
     } finally {
       isLoading = false;
       notifyListeners();

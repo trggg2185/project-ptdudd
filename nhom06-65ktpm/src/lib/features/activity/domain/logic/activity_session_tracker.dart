@@ -58,6 +58,7 @@ class ActivitySessionTracker {
   }
 
   Duration durationAt(DateTime now) {
+    if (status == ActivityStatus.idle) return Duration.zero;
     final baseStartedAt = startedAt;
     if (baseStartedAt == null) return Duration.zero;
     var excluded = pausedDuration;

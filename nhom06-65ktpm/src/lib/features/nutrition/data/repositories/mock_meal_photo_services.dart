@@ -84,6 +84,7 @@ class InMemoryPrivateMealPhotoStorage implements MealPhotoStorage {
     required String ownerUid,
     required String logId,
     required PreparedMealPhoto photo,
+    bool isRetry = false,
   }) async {
     final trimmedOwner = ownerUid.trim();
     final verifiedMime = validator.validateForUpload(

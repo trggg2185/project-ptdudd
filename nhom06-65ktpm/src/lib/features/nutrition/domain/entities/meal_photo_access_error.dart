@@ -43,15 +43,18 @@ class MealPhotoPickOutcome {
   bool get hasPhoto => preparedPhoto != null;
 }
 
-/// Kết quả lưu nhật ký bữa ăn kèm trạng thái ảnh (upload thành công, nhập tay hoặc chờ đồng bộ offline).
+/// Kết quả lưu nhật ký bữa ăn kèm trạng thái ảnh (upload thành công, nhập tay,
+/// chờ đồng bộ offline hoặc chỉ lưu được nhật ký nhập tay khi không có kho ảnh chờ).
 class MealLogSaveResult {
   final MealLog log;
   final bool savedOfflineWithoutCloudPhoto;
+  final bool photoQueuedForRetry;
   final String userMessage;
 
   const MealLogSaveResult({
     required this.log,
     required this.savedOfflineWithoutCloudPhoto,
+    this.photoQueuedForRetry = false,
     required this.userMessage,
   });
 }

@@ -10,6 +10,7 @@ abstract interface class MealPhotoStorage {
     required String ownerUid,
     required String logId,
     required PreparedMealPhoto photo,
+    bool isRetry = false,
   });
 
   Future<String?> createShortLivedSignedUrl({

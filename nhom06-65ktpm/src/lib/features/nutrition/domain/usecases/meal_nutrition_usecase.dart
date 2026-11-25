@@ -169,6 +169,7 @@ class MealNutritionUseCase {
 
     StoredMealPhoto? storedPhoto;
     var savedOfflinePhoto = false;
+    var photoQueuedForRetry = false;
     MealPhotoUploadStatus uploadStatus = MealPhotoUploadStatus.none;
 
     if (photoToUpload != null) {
@@ -183,6 +184,8 @@ class MealNutritionUseCase {
         rethrow;
       } on SocketException {
         savedOfflinePhoto = true;
+      } on HttpException {
+        savedOfflinePhoto = true;
       } on TimeoutException {
         savedOfflinePhoto = true;
       } on MealPhotoAccessException catch (error) {
@@ -194,12 +197,24 @@ class MealNutritionUseCase {
       }
 
       if (savedOfflinePhoto) {
-        uploadStatus = MealPhotoUploadStatus.pendingLocal;
-        await pendingPhotoStore?.savePendingPhoto(
-          ownerUid: trimmedOwner,
-          logId: logId,
-          photo: photoToUpload,
-        );
+        final store = pendingPhotoStore;
+        if (store != null) {
+          try {
+            await store.savePendingPhoto(
+              ownerUid: trimmedOwner,
+              logId: logId,
+              photo: photoToUpload,
+            );
+            photoQueuedForRetry = true;
+            uploadStatus = MealPhotoUploadStatus.pendingLocal;
+          } catch (_) {
+            photoQueuedForRetry = false;
+            uploadStatus = MealPhotoUploadStatus.failed;
+          }
+        } else {
+          photoQueuedForRetry = false;
+          uploadStatus = MealPhotoUploadStatus.failed;
+        }
       }
     }
 
@@ -214,7 +229,8 @@ class MealNutritionUseCase {
       mealType: mealType,
       consumedAt: (consumedAt ?? now).toUtc(),
       imagePath: storedPhoto?.storagePath,
-      photoSource: storedPhoto?.source ?? photoToUpload?.source,
+      photoSource: storedPhoto?.source ??
+          (photoQueuedForRetry ? photoToUpload?.source : null),
       photoUploadStatus: uploadStatus,
       note: (normalizedNote == null || normalizedNote.isEmpty)
           ? null
@@ -225,15 +241,24 @@ class MealNutritionUseCase {
     );
 
     final saved = await mealLogRepository.saveMealLog(log);
-    final message = savedOfflinePhoto
-        ? 'Mất kết nối mạng khi tải ảnh. Nhật ký "$trimmedMealName" đã được lưu cục bộ và ảnh sẽ đồng bộ khi có mạng.'
-        : (saved.hasPhoto
-              ? 'Đã lưu nhật ký bữa ăn "$trimmedMealName" kèm ảnh riêng tư.'
-              : 'Đã lưu nhật ký bữa ăn "$trimmedMealName" (nhập tay).');
+    final String message;
+    if (savedOfflinePhoto && photoQueuedForRetry) {
+      message =
+          'Mất kết nối mạng khi tải ảnh. Nhật ký "$trimmedMealName" đã được lưu cục bộ và ảnh sẽ đồng bộ khi có mạng.';
+    } else if (savedOfflinePhoto && !photoQueuedForRetry) {
+      message =
+          'Mất kết nối mạng khi tải ảnh và không thể lưu ảnh chờ đồng bộ. Chỉ ghi được nhật ký nhập tay "$trimmedMealName" (chưa có ảnh).';
+    } else if (saved.hasPhoto) {
+      message =
+          'Đã lưu nhật ký bữa ăn "$trimmedMealName" kèm ảnh riêng tư.';
+    } else {
+      message = 'Đã lưu nhật ký bữa ăn "$trimmedMealName" (nhập tay).';
+    }
 
     return MealLogSaveResult(
       log: saved,
       savedOfflineWithoutCloudPhoto: savedOfflinePhoto,
+      photoQueuedForRetry: photoQueuedForRetry,
       userMessage: message,
     );
   }
@@ -278,7 +303,7 @@ class MealNutritionUseCase {
     for (final pending in pendingList) {
       if (pending.ownerUid != ownerUid) continue;
       final existingLog = logsById[pending.logId];
-      if (existingLog == null) {
+      if (existingLog == null || existingLog.hasPhoto) {
         await store.removePendingPhoto(
           ownerUid: ownerUid,
           logId: pending.logId,
@@ -291,6 +316,7 @@ class MealNutritionUseCase {
           ownerUid: ownerUid,
           logId: pending.logId,
           photo: pending.photo,
+          isRetry: true,
         );
         final updatedLog = existingLog.copyWith(
           imagePath: stored.storagePath,
@@ -305,6 +331,8 @@ class MealNutritionUseCase {
         );
         uploadedCount++;
       } on SocketException {
+        break;
+      } on HttpException {
         break;
       } on TimeoutException {
         break;
@@ -392,8 +420,32 @@ class MealNutritionUseCase {
     return false;
   }
 
-  Future<List<MealLog>> getMealHistory({required String ownerUid}) {
-    return mealLogRepository.getMealLogs(ownerUid: ownerUid);
+  Future<List<MealLog>> getMealHistory({required String ownerUid}) async {
+    final logs = await mealLogRepository.getMealLogs(ownerUid: ownerUid);
+    final store = pendingPhotoStore;
+    if (store == null || logs.isEmpty) {
+      return logs;
+    }
+
+    final pendingPhotos = await store.getPendingPhotos(ownerUid: ownerUid);
+    if (pendingPhotos.isEmpty) {
+      return logs;
+    }
+
+    final pendingByLogId = {
+      for (final item in pendingPhotos) item.logId: item,
+    };
+    return List<MealLog>.unmodifiable(
+      logs.map((log) {
+        if (log.hasPhoto) return log;
+        final pending = pendingByLogId[log.id];
+        if (pending == null) return log;
+        return log.copyWith(
+          photoSource: log.photoSource ?? pending.photo.source,
+          photoUploadStatus: MealPhotoUploadStatus.pendingLocal,
+        );
+      }),
+    );
   }
 
   static String _friendlyAccessFallbackMessage(MealPhotoAccessException error) {

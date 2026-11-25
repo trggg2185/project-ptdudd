@@ -68,6 +68,17 @@ Android: chạy `flutter devices`, bật USB debugging nếu dùng điện tho�
 
 **Module Thói quen & Kỷ luật.** Đăng nhập bằng tài khoản có claim `role: authenticated` và chọn **Mở thói quen**. Màn hình dùng UID Firebase của phiên hiện tại để tải dữ liệu Supabase. Khi lưu thói quen đầu tiên, app tạo hàng hồ sơ tối thiểu nếu chưa có. Thay đổi lịch lặp có hiệu lực từ ngày địa phương tiếp theo. Nếu khởi tạo backend thất bại, ứng dụng hiển thị nút **Thử lại**. Các test dùng `InMemoryHabitRepository` cho demo và dữ liệu giả. Màn hình thói quen hiện cần mạng để lưu lên Supabase.
 
+**Module Nhật ký vận động và GPS (Issue #8):** mở từ nút “Nhật ký vận động” sau đăng nhập khi tài khoản có claim `role: authenticated`. Chọn môn, nhập cảm nhận, dùng `Start/Pause/Resume/Stop` để ghi phiên GPS; khi ứng dụng ra nền, luồng ghi GPS tự tạm dừng. Điểm có độ chính xác lớn hơn 30 mét hoặc trùng gần nhau được bỏ qua, quãng đường được tính bằng Haversine và thời gian Pause không cộng vào thời lượng. Khi không có vị trí hoặc người dùng từ chối quyền, phần nhập thủ công vẫn lưu thời lượng. Tuyến đường chỉ được lưu khi bật “Lưu tuyến đường”. Bản demo dùng `InMemoryActivityRepository`; `SupabaseActivityRepository` ghi `activity_sessions` và `route_points` đã khai báo trong migration.
+
+Chạy kiểm thử activity:
+
+```bash
+flutter test test/features/activity/activity_session_tracker_test.dart --no-pub
+flutter test test/features/activity/activity_page_test.dart --no-pub
+```
+
+Kiểm thử Android thật: bật Location, cấp quyền khi app hỏi, chạy phiên ngoài trời, Pause ít nhất 30 giây rồi resume và xác nhận quãng đường không tăng trong khoảng đó, Stop và lưu có/không lưu tuyến, đưa app ra nền để xác nhận GPS dừng, kiểm tra mất dịch vụ hoặc quyền để xác nhận luồng nhập tay vẫn hoạt động. Ghi sai số GPS quan sát và tình huống mất tín hiệu trong báo cáo PR; không lưu tọa độ thật của người dùng vào repository.
+
 Kiểm tra trên máy nhóm trưởng đã qua `flutter analyze --no-pub`, `flutter build web --no-pub` và `flutter build apk --debug --no-pub`. APK debug được tạo cục bộ trong `build/app/outputs/flutter-apk/`.
 
 Thành viên phát triển ứng dụng dùng cấu hình client trong kho và tài khoản thử HealthyLife. Firebase CLI và Supabase CLI chỉ cần cho thành viên phụ trách quản trị cloud. Nếu chưa thấy màn hình đăng nhập, kiểm tra đang chạy bản có issue #1 trước khi thay đổi cấu hình.

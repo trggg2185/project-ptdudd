@@ -5,10 +5,16 @@ import 'auth_feedback.dart';
 import 'sign_in_page.dart';
 
 class AuthGate extends StatefulWidget {
-  const AuthGate({super.key, required this.auth, this.habitsPageBuilder});
+  const AuthGate({
+    super.key,
+    required this.auth,
+    this.habitsPageBuilder,
+    this.activityPageBuilder,
+  });
 
   final AuthRepository auth;
   final Widget Function(AuthSession)? habitsPageBuilder;
+  final Widget Function(AuthSession)? activityPageBuilder;
 
   @override
   State<AuthGate> createState() => _AuthGateState();
@@ -56,6 +62,7 @@ class _AuthGateState extends State<AuthGate> {
                 auth: widget.auth,
                 session: session,
                 habitsPageBuilder: widget.habitsPageBuilder,
+                activityPageBuilder: widget.activityPageBuilder,
               );
       },
     );
@@ -69,11 +76,13 @@ class _SessionNavigator extends StatefulWidget {
     required this.auth,
     required this.session,
     required this.habitsPageBuilder,
+    required this.activityPageBuilder,
   });
 
   final AuthRepository auth;
   final AuthSession session;
   final Widget Function(AuthSession)? habitsPageBuilder;
+  final Widget Function(AuthSession)? activityPageBuilder;
 
   @override
   State<_SessionNavigator> createState() => _SessionNavigatorState();
@@ -93,6 +102,7 @@ class _SessionNavigatorState extends State<_SessionNavigator> {
             auth: widget.auth,
             session: widget.session,
             habitsPageBuilder: widget.habitsPageBuilder,
+            activityPageBuilder: widget.activityPageBuilder,
           ),
         ),
       ),
@@ -105,11 +115,13 @@ class _SessionPage extends StatefulWidget {
     required this.auth,
     required this.session,
     required this.habitsPageBuilder,
+    required this.activityPageBuilder,
   });
 
   final AuthRepository auth;
   final AuthSession session;
   final Widget Function(AuthSession)? habitsPageBuilder;
+  final Widget Function(AuthSession)? activityPageBuilder;
 
   @override
   State<_SessionPage> createState() => _SessionPageState();
@@ -206,6 +218,23 @@ class _SessionPageState extends State<_SessionPage> {
                                   )
                                 : null,
                             child: const Text('Mở thói quen'),
+                          ),
+                        if (widget.activityPageBuilder
+                            case final buildActivity?)
+                          FilledButton(
+                            onPressed:
+                                snapshot.connectionState ==
+                                        ConnectionState.done &&
+                                    snapshot.data?.allowed == true &&
+                                    !_signingOut
+                                ? () => Navigator.of(context).push<void>(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) =>
+                                          buildActivity(widget.session),
+                                    ),
+                                  )
+                                : null,
+                            child: const Text('Nhật ký vận động'),
                           ),
                       ],
                     ),

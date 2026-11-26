@@ -9,11 +9,13 @@ class AuthGate extends StatefulWidget {
     super.key,
     required this.auth,
     this.habitsPageBuilder,
+    this.profilePageBuilder,
     this.activityPageBuilder,
   });
 
   final AuthRepository auth;
   final Widget Function(AuthSession)? habitsPageBuilder;
+  final Widget Function(AuthSession)? profilePageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
 
   @override
@@ -62,6 +64,7 @@ class _AuthGateState extends State<AuthGate> {
                 auth: widget.auth,
                 session: session,
                 habitsPageBuilder: widget.habitsPageBuilder,
+                profilePageBuilder: widget.profilePageBuilder,
                 activityPageBuilder: widget.activityPageBuilder,
               );
       },
@@ -76,12 +79,14 @@ class _SessionNavigator extends StatefulWidget {
     required this.auth,
     required this.session,
     required this.habitsPageBuilder,
+    required this.profilePageBuilder,
     required this.activityPageBuilder,
   });
 
   final AuthRepository auth;
   final AuthSession session;
   final Widget Function(AuthSession)? habitsPageBuilder;
+  final Widget Function(AuthSession)? profilePageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
 
   @override
@@ -102,6 +107,7 @@ class _SessionNavigatorState extends State<_SessionNavigator> {
             auth: widget.auth,
             session: widget.session,
             habitsPageBuilder: widget.habitsPageBuilder,
+            profilePageBuilder: widget.profilePageBuilder,
             activityPageBuilder: widget.activityPageBuilder,
           ),
         ),
@@ -115,12 +121,14 @@ class _SessionPage extends StatefulWidget {
     required this.auth,
     required this.session,
     required this.habitsPageBuilder,
+    required this.profilePageBuilder,
     required this.activityPageBuilder,
   });
 
   final AuthRepository auth;
   final AuthSession session;
   final Widget Function(AuthSession)? habitsPageBuilder;
+  final Widget Function(AuthSession)? profilePageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
 
   @override
@@ -203,39 +211,27 @@ class _SessionPageState extends State<_SessionPage> {
                                 }),
                           child: const Text('Kiểm tra lại quyền'),
                         ),
-                        if (widget.habitsPageBuilder case final buildHabits?)
-                          FilledButton(
-                            onPressed:
-                                snapshot.connectionState ==
-                                        ConnectionState.done &&
-                                    snapshot.data?.allowed == true &&
-                                    !_signingOut
-                                ? () => Navigator.of(context).push<void>(
-                                    MaterialPageRoute<void>(
-                                      builder: (_) =>
-                                          buildHabits(widget.session),
-                                    ),
-                                  )
-                                : null,
-                            child: const Text('Mở thói quen'),
-                          ),
-                        if (widget.activityPageBuilder
-                            case final buildActivity?)
-                          FilledButton(
-                            onPressed:
-                                snapshot.connectionState ==
-                                        ConnectionState.done &&
-                                    snapshot.data?.allowed == true &&
-                                    !_signingOut
-                                ? () => Navigator.of(context).push<void>(
-                                    MaterialPageRoute<void>(
-                                      builder: (_) =>
-                                          buildActivity(widget.session),
-                                    ),
-                                  )
-                                : null,
-                            child: const Text('Nhật ký vận động'),
-                          ),
+                        for (final entry in {
+                          'Mở hồ sơ và lịch': widget.profilePageBuilder,
+                          'Mở thói quen': widget.habitsPageBuilder,
+                          'Nhật ký vận động': widget.activityPageBuilder,
+                        }.entries)
+                          if (entry.value case final buildPage?)
+                            FilledButton(
+                              onPressed:
+                                  snapshot.connectionState ==
+                                          ConnectionState.done &&
+                                      snapshot.data?.allowed == true &&
+                                      !_signingOut
+                                  ? () => Navigator.of(context).push<void>(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) =>
+                                            buildPage(widget.session),
+                                      ),
+                                    )
+                                  : null,
+                              child: Text(entry.key),
+                            ),
                       ],
                     ),
                   ),

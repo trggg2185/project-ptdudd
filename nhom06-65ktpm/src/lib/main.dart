@@ -12,6 +12,8 @@ import 'features/habits/data/repositories/in_memory_habit_repository.dart';
 import 'features/habits/data/repositories/supabase_habit_repository.dart';
 import 'features/habits/domain/repositories/habit_repository.dart';
 import 'features/habits/presentation/pages/habits_page.dart';
+import 'features/profile/data/supabase_profile_repository.dart';
+import 'features/profile/presentation/profile_page.dart';
 
 /// Khởi tạo và phân giải repository phù hợp:
 /// - Khi Supabase đã được cấu hình và khởi tạo (`isInitialized == true`):
@@ -110,6 +112,12 @@ class _HealthyLifeAppState extends State<HealthyLifeApp> {
           if (snapshot.data case final auth?) {
             return AuthGate(
               auth: auth,
+              profilePageBuilder: (session) => ProfilePage(
+                repository: SupabaseProfileRepository(
+                  Supabase.instance.client,
+                  session.uid,
+                ),
+              ),
               habitsPageBuilder: (session) => HabitsPage(
                 repository: SupabaseHabitRepository(),
                 currentUserId: session.uid,

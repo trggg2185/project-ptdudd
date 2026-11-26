@@ -2,7 +2,7 @@
 
 ## Bắt đầu tại đây — dành cho thành viên và AI của thành viên
 
-**Bản tích hợp issue #1, #4, #7 và #10.** Trên Android/Web, ứng dụng đăng nhập bằng Firebase và mở màn hình **Thói quen** khi tài khoản có quyền truy cập dữ liệu. SQLite và sync worker nằm trong `lib/core/`. Bộ gợi ý đã có danh mục mẫu, bộ lọc, xếp hạng và giao diện xem trước riêng. Luồng gợi ý dùng hồ sơ người dùng và việc gắn hàng đợi SQLite vào UI thuộc bước tích hợp tiếp theo.
+**Bản tích hợp issue #1, #2, #4, #7, #8 và #10.** Trên Android/Web, ứng dụng đăng nhập bằng Firebase và mở màn hình **Hồ sơ và lịch**, **Thói quen** hoặc **Nhật ký vận động** khi tài khoản có quyền truy cập dữ liệu. SQLite và sync worker nằm trong `lib/core/`. Bộ gợi ý đã có danh mục mẫu, bộ lọc, xếp hạng và giao diện xem trước riêng. Việc tạo lịch tự động từ hồ sơ và kết nối hàng đợi SQLite với UI thuộc bước tích hợp tiếp theo.
 
 AI đọc [AGENTS.md](AGENTS.md) trước khi sửa mã, rồi đọc issue được giao và các phần liên quan trong README. Các mục 1–11 bên dưới là **đặc tả/kế hoạch**, không phải danh sách tính năng đã hoàn thành.
 
@@ -64,9 +64,19 @@ flutter run -d chrome --web-port=5000
 
 Android: chạy `flutter devices`, bật USB debugging nếu dùng điện thoại, rồi `flutter run -d <device-id>`. Android Studio cần JDK/SDK tương thích với cấu hình Gradle có sẵn; chạy theo chẩn đoán flutter doctor, không commit đường dẫn máy vào `android/local.properties`.
 
-**Khi chạy lần đầu**, HealthyLife hiển thị nút đăng nhập bằng Email/Password hoặc Google. Nếu Firebase đã lưu phiên trên thiết bị/trình duyệt, ứng dụng mở màn hình **Phiên đăng nhập**. Chọn **Đăng xuất** để thử tài khoản khác. Chạy được luồng đăng nhập chưa kiểm chứng toàn bộ Firebase Auth, Supabase JWT/RLS hoặc nghiệp vụ. Đã có kiểm thử tập trung cho SQLite và sync worker; hướng dẫn chạy và phạm vi kiểm thử ở mục 4.4. Thành viên làm hồ sơ và lịch tập nối màn hình của mình vào sau phiên đăng nhập khi tích hợp. Các issue khác vẫn cần bổ sung kiểm thử phù hợp, không ghi “tests passed” nếu chưa chạy test.
+**Khi chạy lần đầu**, HealthyLife hiển thị nút đăng nhập bằng Email/Password hoặc Google. Nếu Firebase đã lưu phiên trên thiết bị/trình duyệt, ứng dụng mở màn hình **Phiên đăng nhập**. Sau khi tài khoản có quyền truy cập dữ liệu, chọn **Mở hồ sơ và lịch**, **Mở thói quen** hoặc **Nhật ký vận động**. Chọn **Đăng xuất** để thử tài khoản khác. Hướng dẫn kiểm thử SQLite và sync worker nằm ở mục 4.4.
 
 **Module Thói quen & Kỷ luật.** Đăng nhập bằng tài khoản có claim `role: authenticated` và chọn **Mở thói quen**. Màn hình dùng UID Firebase của phiên hiện tại để tải dữ liệu Supabase. Khi lưu thói quen đầu tiên, app tạo hàng hồ sơ tối thiểu nếu chưa có. Thay đổi lịch lặp có hiệu lực từ ngày địa phương tiếp theo. Nếu khởi tạo backend thất bại, ứng dụng hiển thị nút **Thử lại**. Các test dùng `InMemoryHabitRepository` cho demo và dữ liệu giả. Màn hình thói quen hiện cần mạng để lưu lên Supabase.
+
+**Issue #2 — Hồ sơ và lịch.** Từ màn hình phiên chọn **Mở hồ sơ và lịch**.
+
+1. Trong **Hồ sơ**, xác nhận từ 18 tuổi, nhập múi giờ IANA (ví dụ `Asia/Ho_Chi_Minh`), mục tiêu, mức vận động, số buổi và số phút mỗi buổi. Có thể lưu hồ sơ chưa đủ điều kiện gợi ý. Khai báo công việc, môn tập, thiết bị, ngân sách, dị ứng và giờ ngủ theo nhu cầu. Khi chưa xác nhận dị ứng, đầu vào vẫn khóa gợi ý món ăn.
+2. Trong **Lịch bận**, chọn **Thêm khoảng bận** rồi chọn **Ca làm việc** nếu cần. Ví dụ ca `22:00–06:00` kết thúc hôm sau. Nhập số phút đi lại cho mỗi chiều. Có thể bật lặp mỗi tuần vào cùng thứ và chọn các ngày ngoại lệ. Chạm tên một mục để sửa.
+3. Trong **Lịch thủ công**, thêm giờ cho một hoạt động ngay cả khi hồ sơ chưa đủ điều kiện gợi ý. App lưu mục do bạn đặt giờ và hiển thị lại khi mở màn hình. Issue #3 sẽ dùng đầu vào này để xếp lịch tự động.
+
+Hồ sơ và lịch dùng các bảng `profiles` và `availability_blocks` đã triển khai. Tuỳ chọn của issue #2 nằm trong `profiles.living_conditions.healthylife_profile`. Lịch dùng UTC cho mốc thời gian và giữ múi giờ IANA, loại lịch, cờ lặp trong `recurrence_rule`. `HealthProfile.toRecommendationProfile()` cung cấp dữ liệu cho bộ gợi ý. `ScheduleBlock.occupiedTimeOn()` mở rộng kỳ lặp và cộng đi lại vào hai đầu khoảng bận.
+
+Chạy `flutter test test/features/profile` để thử xác thực đầu vào, ca đêm, ngày ngoại lệ, DST, lọc dị ứng và lưu lịch thủ công với repository giả.
 
 **Module Nhật ký vận động và GPS (Issue #8):** mở từ nút “Nhật ký vận động” sau đăng nhập khi tài khoản có claim `role: authenticated`. Chọn môn, nhập cảm nhận, dùng `Start/Pause/Resume/Stop` để ghi phiên GPS; khi ứng dụng ra nền, luồng ghi GPS tự tạm dừng. Điểm có độ chính xác lớn hơn 30 mét hoặc trùng gần nhau được bỏ qua, quãng đường được tính bằng Haversine và thời gian Pause không cộng vào thời lượng. Khi không có vị trí hoặc người dùng từ chối quyền, phần nhập thủ công vẫn lưu thời lượng. Tuyến đường chỉ được lưu khi bật “Lưu tuyến đường”. Bản demo dùng `InMemoryActivityRepository`; `SupabaseActivityRepository` ghi `activity_sessions` và `route_points` đã khai báo trong migration.
 

@@ -58,3 +58,39 @@ class MealLogSaveResult {
     required this.userMessage,
   });
 }
+
+/// Thông tin một ảnh chờ bị từ chối trong quá trình đồng bộ lại để báo rõ người dùng cần sửa ảnh nào.
+class PendingMealPhotoRetryFailure {
+  final String logId;
+  final String mealName;
+  final String fileName;
+  final String reason;
+  final String? statusCode;
+
+  const PendingMealPhotoRetryFailure({
+    required this.logId,
+    required this.mealName,
+    required this.fileName,
+    required this.reason,
+    this.statusCode,
+  });
+}
+
+/// Kết quả chi tiết sau một lượt đồng bộ lại hàng đợi ảnh chờ.
+class PendingMealPhotoRetryReport {
+  final int uploadedCount;
+  final List<PendingMealPhotoRetryFailure> rejectedPhotos;
+  final int remainingPendingCount;
+  final bool stoppedByNetworkError;
+  final String userMessage;
+
+  const PendingMealPhotoRetryReport({
+    required this.uploadedCount,
+    this.rejectedPhotos = const [],
+    this.remainingPendingCount = 0,
+    this.stoppedByNetworkError = false,
+    required this.userMessage,
+  });
+
+  bool get hasRejectedPhotos => rejectedPhotos.isNotEmpty;
+}

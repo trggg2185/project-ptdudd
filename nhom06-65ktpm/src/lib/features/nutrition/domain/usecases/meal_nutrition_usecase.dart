@@ -289,16 +289,42 @@ class MealNutritionUseCase {
 
   /// Thử tải lên lại các ảnh đang chờ của đúng `ownerUid` khi có mạng,
   /// cập nhật `imagePath` vào đúng bản ghi nhật ký cũ (không tạo bản ghi trùng).
+  /// Trả về số lượng ảnh đồng bộ thành công; xem [retryPendingPhotoUploadsDetailed]
+  /// để lấy chi tiết từng ảnh bị từ chối cần người dùng sửa.
   Future<int> retryPendingPhotoUploads({required String ownerUid}) async {
+    final report = await retryPendingPhotoUploadsDetailed(ownerUid: ownerUid);
+    return report.uploadedCount;
+  }
+
+  /// Thử tải lên lại từng ảnh chờ của đúng `ownerUid`:
+  /// - Lỗi mạng/mất phản hồi hoặc `401` (hết phiên) sẽ dừng vòng lặp và giữ ảnh trong hàng đợi.
+  /// - Lỗi từ chối theo từng ảnh (vd: `413`, `415`, `409` khác lỗi trùng object, `MealPhotoException`)
+  ///   được ghi nhận riêng cho từng ảnh, đánh dấu ảnh lỗi, bỏ khỏi hàng đợi để không chặn
+  ///   các ảnh hợp lệ phía sau và tiếp tục tải các ảnh còn lại.
+  Future<PendingMealPhotoRetryReport> retryPendingPhotoUploadsDetailed({
+    required String ownerUid,
+  }) async {
     final store = pendingPhotoStore;
-    if (store == null) return 0;
+    if (store == null) {
+      return const PendingMealPhotoRetryReport(
+        uploadedCount: 0,
+        userMessage: 'Chưa cấu hình kho ảnh chờ để đồng bộ.',
+      );
+    }
 
     final pendingList = await store.getPendingPhotos(ownerUid: ownerUid);
-    if (pendingList.isEmpty) return 0;
+    if (pendingList.isEmpty) {
+      return const PendingMealPhotoRetryReport(
+        uploadedCount: 0,
+        userMessage: 'Không có ảnh bữa ăn nào đang chờ đồng bộ.',
+      );
+    }
 
     final existingLogs = await mealLogRepository.getMealLogs(ownerUid: ownerUid);
     final logsById = {for (final log in existingLogs) log.id: log};
     var uploadedCount = 0;
+    var stoppedByNetworkError = false;
+    final rejectedPhotos = <PendingMealPhotoRetryFailure>[];
 
     for (final pending in pendingList) {
       if (pending.ownerUid != ownerUid) continue;
@@ -331,19 +357,154 @@ class MealNutritionUseCase {
         );
         uploadedCount++;
       } on SocketException {
+        stoppedByNetworkError = true;
         break;
       } on HttpException {
+        stoppedByNetworkError = true;
         break;
       } on TimeoutException {
+        stoppedByNetworkError = true;
         break;
       } on MealPhotoAccessException catch (error) {
         if (error.code == MealPhotoAccessFailureCode.networkOffline) {
+          stoppedByNetworkError = true;
           break;
         }
+        await _markPendingPhotoRejected(
+          store: store,
+          ownerUid: ownerUid,
+          existingLog: existingLog,
+          pending: pending,
+          reason: _friendlyAccessFallbackMessage(error),
+          rejectedPhotos: rejectedPhotos,
+        );
+      } on MealPhotoException catch (error) {
+        await _markPendingPhotoRejected(
+          store: store,
+          ownerUid: ownerUid,
+          existingLog: existingLog,
+          pending: pending,
+          reason: error.message,
+          rejectedPhotos: rejectedPhotos,
+        );
+      } catch (error) {
+        final statusCode = _extractHttpStatusCode(error);
+        if (statusCode == '401') {
+          stoppedByNetworkError = true;
+          break;
+        }
+        await _markPendingPhotoRejected(
+          store: store,
+          ownerUid: ownerUid,
+          existingLog: existingLog,
+          pending: pending,
+          statusCode: statusCode,
+          reason: _friendlyStorageRejectionReason(error, statusCode),
+          rejectedPhotos: rejectedPhotos,
+        );
       }
     }
 
-    return uploadedCount;
+    final remaining = (await store.getPendingPhotos(ownerUid: ownerUid)).length;
+    final message = _buildRetrySummaryMessage(
+      uploadedCount: uploadedCount,
+      rejectedPhotos: rejectedPhotos,
+      remainingPendingCount: remaining,
+      stoppedByNetworkError: stoppedByNetworkError,
+    );
+
+    return PendingMealPhotoRetryReport(
+      uploadedCount: uploadedCount,
+      rejectedPhotos: List<PendingMealPhotoRetryFailure>.unmodifiable(
+        rejectedPhotos,
+      ),
+      remainingPendingCount: remaining,
+      stoppedByNetworkError: stoppedByNetworkError,
+      userMessage: message,
+    );
+  }
+
+  Future<void> _markPendingPhotoRejected({
+    required PendingMealPhotoStore store,
+    required String ownerUid,
+    required MealLog existingLog,
+    required PendingMealPhoto pending,
+    required String reason,
+    required List<PendingMealPhotoRetryFailure> rejectedPhotos,
+    String? statusCode,
+  }) async {
+    final failedLog = existingLog.copyWith(
+      clearImagePath: true,
+      photoUploadStatus: MealPhotoUploadStatus.failed,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    await mealLogRepository.saveMealLog(failedLog);
+    await store.removePendingPhoto(ownerUid: ownerUid, logId: pending.logId);
+    rejectedPhotos.add(
+      PendingMealPhotoRetryFailure(
+        logId: pending.logId,
+        mealName: existingLog.mealName,
+        fileName: pending.photo.fileName,
+        reason: reason,
+        statusCode: statusCode,
+      ),
+    );
+  }
+
+  static String? _extractHttpStatusCode(Object error) {
+    final match = RegExp(r'statusCode:\s*(\d{3})').firstMatch(error.toString());
+    return match?.group(1);
+  }
+
+  static String _friendlyStorageRejectionReason(
+    Object error,
+    String? statusCode,
+  ) {
+    final text = error.toString().toLowerCase();
+    if (statusCode == '413' ||
+        text.contains('payload too large') ||
+        text.contains('maximum allowed size')) {
+      return 'Ảnh vượt quá giới hạn dung lượng 1 MB của Storage. Hãy nén hoặc chọn ảnh nhỏ hơn.';
+    }
+    if (statusCode == '415' || text.contains('mime')) {
+      return 'Định dạng ảnh không được Storage chấp nhận (chỉ hỗ trợ JPEG, PNG, WebP). Hãy chọn ảnh khác.';
+    }
+    if (statusCode == '409') {
+      return 'Storage báo xung đột (409) khi lưu ảnh này. Hãy kiểm tra và chọn/tải lại ảnh.';
+    }
+    if (statusCode == '403') {
+      return 'Storage từ chối quyền lưu ảnh này (403). Hãy kiểm tra tài khoản hoặc chọn lại ảnh.';
+    }
+    return 'Storage từ chối ảnh này${statusCode == null ? '' : ' (HTTP $statusCode)'}. Vui lòng kiểm tra hoặc chọn ảnh khác.';
+  }
+
+  static String _buildRetrySummaryMessage({
+    required int uploadedCount,
+    required List<PendingMealPhotoRetryFailure> rejectedPhotos,
+    required int remainingPendingCount,
+    required bool stoppedByNetworkError,
+  }) {
+    final parts = <String>[];
+    if (uploadedCount > 0) {
+      parts.add('Đã đồng bộ $uploadedCount ảnh bữa ăn đang chờ.');
+    }
+    if (rejectedPhotos.isNotEmpty) {
+      final details = rejectedPhotos
+          .map((item) => '"${item.mealName}" (${item.fileName}): ${item.reason}')
+          .join(' ');
+      parts.add(
+        '${rejectedPhotos.length} ảnh bị từ chối cần sửa/chọn lại: $details',
+      );
+    }
+    if (stoppedByNetworkError && remainingPendingCount > 0) {
+      parts.add(
+        'Còn $remainingPendingCount ảnh chờ mạng ổn định để đồng bộ, dữ liệu vẫn an toàn ở cục bộ.',
+      );
+    }
+    if (parts.isEmpty) {
+      return 'Chưa thể đồng bộ ảnh đang chờ, dữ liệu vẫn an toàn ở cục bộ.';
+    }
+    return parts.join(' ');
   }
 
   Future<int> countPendingPhotos({required String ownerUid}) async {

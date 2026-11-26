@@ -57,10 +57,10 @@ class SupabasePrivateMealPhotoStorage implements MealPhotoStorage {
             ),
           );
     } on StorageException catch (error, stackTrace) {
-      if (_isAlreadyExistsError(error)) {
-        // Object tại đúng đường dẫn `<owner_uid>/<log_id>.<ext>` đã tồn tại
-        // trên Storage (ví dụ: lần upload trước đã ghi xong nhưng mất phản hồi HTTP).
-        // Trả kết quả đã upload để cập nhật `image_path` cho đúng nhật ký mà không kẹt retry.
+      if (isRetry && _isDuplicateObjectError(error)) {
+        // Chỉ chấp nhận nhánh đã tồn tại ở lần retry cùng `(ownerUid, logId)` khi
+        // Storage trả lỗi trùng object xác định (ví dụ sau lần upload trước đã ghi
+        // xong nhưng mất phản hồi HTTP). Không coi mọi HTTP 409 là đã upload.
       } else if (_isTransientStorageError(error)) {
         Error.throwWithStackTrace(
           const MealPhotoAccessException(
@@ -162,20 +162,25 @@ class SupabasePrivateMealPhotoStorage implements MealPhotoStorage {
         storagePath.startsWith('$ownerUid/');
   }
 
-  static bool _isAlreadyExistsError(StorageException error) {
+  static bool _isDuplicateObjectError(StorageException error) {
     final status = error.statusCode?.trim();
-    if (status == '401' || status == '403') {
+    if (status != '409' && status != '400') {
       return false;
     }
-    if (status == '409') {
-      return true;
-    }
     final code = error.error?.trim().toLowerCase() ?? '';
-    if (code == 'duplicate' || code == 'resourcealreadyexists') {
-      return true;
+    final message = error.message.trim().toLowerCase();
+    final isDuplicateCode =
+        code == 'duplicate' || code == 'resourcealreadyexists';
+    if (code.isNotEmpty && !isDuplicateCode) {
+      return false;
     }
-    final message = error.message.toLowerCase();
-    return message.contains('already exists');
+    if (isDuplicateCode) {
+      return message.isEmpty ||
+          message.contains('already exists') ||
+          message.contains('duplicate');
+    }
+    return message.contains('the resource already exists') ||
+        message.contains('object already exists');
   }
 
   static bool _isTransientStorageError(StorageException error) {

@@ -149,22 +149,17 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
     if (_saving) return;
     setState(() => _saving = true);
     try {
-      final uploaded = await widget.useCase.retryPendingPhotoUploads(
+      final report = await widget.useCase.retryPendingPhotoUploadsDetailed(
         ownerUid: widget.ownerUid,
       );
       final updatedHistory = await widget.useCase.getMealHistory(
         ownerUid: widget.ownerUid,
       );
-      final remaining = await widget.useCase.countPendingPhotos(
-        ownerUid: widget.ownerUid,
-      );
       if (!mounted) return;
       setState(() {
         _history = updatedHistory;
-        _pendingPhotoCount = remaining;
-        _statusMessage = uploaded > 0
-            ? 'Đã đồng bộ $uploaded ảnh bữa ăn đang chờ.'
-            : 'Chưa thể đồng bộ ảnh đang chờ, dữ liệu vẫn an toàn ở cục bộ.';
+        _pendingPhotoCount = report.remainingPendingCount;
+        _statusMessage = report.userMessage;
       });
     } finally {
       if (mounted) {

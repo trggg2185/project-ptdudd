@@ -94,8 +94,7 @@ class ScheduleBlock {
     final firstDate = calendarDate(localStart);
     if ((!repeatsWeekly && exceptionDates.isNotEmpty) ||
         exceptionDates.any(
-          (date) =>
-              date.isBefore(firstDate) || date.weekday != firstDate.weekday,
+          (date) => !isWeeklyOccurrenceDate(date, firstDate),
         )) {
       throw const FormatException(
         'Ngày ngoại lệ phải trùng ngày bắt đầu của một kỳ lặp.',

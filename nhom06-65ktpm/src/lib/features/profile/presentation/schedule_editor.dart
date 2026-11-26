@@ -72,7 +72,7 @@ class _ScheduleEditorState extends State<ScheduleEditor> {
       firstDate: first,
       lastDate: DateTime(2200),
       selectableDayPredicate: exception
-          ? (value) => value.weekday == _date.weekday
+          ? (value) => isWeeklyOccurrenceDate(value, _date)
           : null,
     );
     if (date == null || !mounted) return;
@@ -137,6 +137,10 @@ class _ScheduleEditorState extends State<ScheduleEditor> {
   @override
   Widget build(BuildContext context) {
     final exceptions = _exceptions.toList()..sort();
+    final invalidExceptions = _weekly
+        ? exceptions.where((day) => !isWeeklyOccurrenceDate(day, _date)).toSet()
+        : const <DateTime>{};
+    final errorColor = Theme.of(context).colorScheme.error;
     return PopScope(
       canPop: !_saving,
       child: AlertDialog(
@@ -252,12 +256,24 @@ class _ScheduleEditorState extends State<ScheduleEditor> {
                       for (final day in exceptions)
                         InputChip(
                           label: Text(calendarDateKey(day)),
+                          labelStyle: invalidExceptions.contains(day)
+                              ? TextStyle(color: errorColor)
+                              : null,
                           onDeleted: _saving
                               ? null
                               : () => setState(() => _exceptions.remove(day)),
                         ),
                     ],
                   ),
+                  if (invalidExceptions.isNotEmpty)
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        'Bỏ ngày ngoại lệ ${invalidExceptions.map(calendarDateKey).join(', ')} '
+                        'hoặc đổi ngày bắt đầu.',
+                        style: TextStyle(color: errorColor),
+                      ),
+                    ),
                   TextButton(
                     onPressed: _saving ? null : () => _pickDay(exception: true),
                     child: const Text('Thêm ngày ngoại lệ'),
@@ -275,7 +291,7 @@ class _ScheduleEditorState extends State<ScheduleEditor> {
             child: const Text('Hủy'),
           ),
           FilledButton(
-            onPressed: _saving ? null : _save,
+            onPressed: _saving || invalidExceptions.isNotEmpty ? null : _save,
             child: Text(_saving ? 'Đang lưu…' : 'Lưu khoảng lịch'),
           ),
         ],

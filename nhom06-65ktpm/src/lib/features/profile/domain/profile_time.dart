@@ -17,6 +17,12 @@ DateTime calendarDate(DateTime date) =>
 String calendarDateKey(DateTime date) =>
     calendarDate(date).toIso8601String().split('T').first;
 
+bool isWeeklyOccurrenceDate(DateTime date, DateTime firstDate) {
+  final day = calendarDate(date);
+  final first = calendarDate(firstDate);
+  return day.weekday == first.weekday && !day.isBefore(first);
+}
+
 String clockLabel(int minute) {
   final hour = (minute ~/ 60).toString().padLeft(2, '0');
   final minutes = (minute % 60).toString().padLeft(2, '0');

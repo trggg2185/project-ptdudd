@@ -4,6 +4,7 @@ import 'package:healthylife/features/profile/domain/health_profile.dart';
 import 'package:healthylife/features/profile/domain/profile_repository.dart';
 import 'package:healthylife/features/profile/domain/schedule_block.dart';
 import 'package:healthylife/features/profile/presentation/profile_page.dart';
+import 'package:healthylife/features/profile/presentation/schedule_editor.dart';
 
 void main() {
   testWidgets(
@@ -72,6 +73,96 @@ void main() {
       expect(repository.profile.sessionMinutes, 20);
     },
   );
+  testWidgets('changing the first day flags invalid exceptions before saving', (
+    tester,
+  ) async {
+    final block = ScheduleBlock.fromLocal(
+      id: 'weekly',
+      kind: ScheduleKind.work,
+      title: 'Ca sáng',
+      timeZone: 'Asia/Ho_Chi_Minh',
+      date: DateTime.utc(2026, 12, 1),
+      startMinute: 480,
+      endMinute: 540,
+      repeatsWeekly: true,
+      exceptionDates: [DateTime.utc(2026, 12, 8), DateTime.utc(2026, 12, 22)],
+    );
+    ScheduleBlock? saved;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => ScheduleEditor(
+                  timeZone: block.timeZone,
+                  isManual: false,
+                  initialBlock: block,
+                  save: (value) async => saved = value,
+                ),
+              ),
+              child: const Text('Sửa lịch'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Sửa lịch'));
+    await tester.pumpAndSettle();
+
+    Future<void> changeStartDate(String previousDate, String day) async {
+      final picker = find.text('Ngày bắt đầu $previousDate');
+      await tester.ensureVisible(picker);
+      await tester.tap(picker);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(CalendarDatePicker),
+          matching: find.text(day),
+        ),
+      );
+      await tester.tap(find.widgetWithText(TextButton, 'OK'));
+      await tester.pumpAndSettle();
+    }
+
+    final warning = find.textContaining('hoặc đổi ngày bắt đầu.');
+    final bothDatesWarning = find.text(
+      'Bỏ ngày ngoại lệ 2026-12-08, 2026-12-22 hoặc đổi ngày bắt đầu.',
+    );
+    final save = find.widgetWithText(FilledButton, 'Lưu khoảng lịch');
+    final earlyChip = find.widgetWithText(InputChip, '2026-12-08');
+    final laterChip = find.widgetWithText(InputChip, '2026-12-22');
+    await changeStartDate('2026-12-01', '2');
+    expect(bothDatesWarning, findsOneWidget);
+    expect(tester.widget<FilledButton>(save).onPressed, isNull);
+    expect(tester.widget<InputChip>(earlyChip).labelStyle, isNotNull);
+    expect(tester.widget<InputChip>(laterChip).labelStyle, isNotNull);
+
+    await changeStartDate('2026-12-02', '1');
+    expect(warning, findsNothing);
+    expect(tester.widget<FilledButton>(save).onPressed, isNotNull);
+
+    await changeStartDate('2026-12-01', '15');
+    expect(
+      find.text('Bỏ ngày ngoại lệ 2026-12-08 hoặc đổi ngày bắt đầu.'),
+      findsOneWidget,
+    );
+    expect(tester.widget<InputChip>(earlyChip).labelStyle, isNotNull);
+    expect(tester.widget<InputChip>(laterChip).labelStyle, isNull);
+
+    final delete = find.descendant(
+      of: earlyChip,
+      matching: find.byTooltip('Delete'),
+    );
+    await tester.ensureVisible(delete);
+    await tester.tap(delete);
+    await tester.pumpAndSettle();
+    expect(warning, findsNothing);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(saved?.exceptionDates, {DateTime.utc(2026, 12, 22)});
+  });
 }
 
 class _TestProfileRepository implements ProfileRepository {

@@ -148,7 +148,7 @@ void main() {
     expect(find.text('Phiên đăng nhập'), findsOneWidget);
   });
 
-  testWidgets('habit access follows the claim and the current Firebase UID', (
+  testWidgets('feature access follows the claim and the current Firebase UID', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -158,6 +158,8 @@ void main() {
           habitsPageBuilder: (session) => Scaffold(body: Text(session.uid)),
           profilePageBuilder: (session) =>
               Scaffold(appBar: AppBar(), body: Text('Hồ sơ ${session.uid}')),
+          activityPageBuilder: (session) =>
+              Scaffold(appBar: AppBar(), body: Text('Vận động ${session.uid}')),
         ),
       ),
     );
@@ -165,8 +167,13 @@ void main() {
     await tester.pumpAndSettle();
     final button = find.widgetWithText(FilledButton, 'Mở thói quen');
     final profileButton = find.widgetWithText(FilledButton, 'Mở hồ sơ và lịch');
+    final activityButton = find.widgetWithText(
+      FilledButton,
+      'Nhật ký vận động',
+    );
     expect(tester.widget<FilledButton>(button).onPressed, isNull);
     expect(tester.widget<FilledButton>(profileButton).onPressed, isNull);
+    expect(tester.widget<FilledButton>(activityButton).onPressed, isNull);
 
     auth.dataAccess = true;
     await tester.tap(find.text('Kiểm tra lại quyền'));
@@ -174,6 +181,11 @@ void main() {
     await tester.tap(profileButton);
     await tester.pumpAndSettle();
     expect(find.text('Hồ sơ account-a'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(activityButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Vận động account-a'), findsOneWidget);
     await tester.pageBack();
     await tester.pumpAndSettle();
     await tester.tap(button);

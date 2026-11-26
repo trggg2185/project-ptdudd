@@ -185,11 +185,13 @@ class SupabasePrivateMealPhotoStorage implements MealPhotoStorage {
 
   static bool _isTransientStorageError(StorageException error) {
     final status = error.statusCode?.trim() ?? '';
-    return status == '408' ||
-        status == '502' ||
-        status == '503' ||
-        status == '504' ||
-        status.contains('ClientException') ||
+    final numericStatus = int.tryParse(status);
+    if (numericStatus != null) {
+      return numericStatus == 408 ||
+          numericStatus == 429 ||
+          (numericStatus >= 500 && numericStatus <= 599);
+    }
+    return status.contains('ClientException') ||
         status.contains('SocketException') ||
         status.contains('TimeoutException') ||
         status.contains('HttpException');

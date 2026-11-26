@@ -48,7 +48,7 @@ nhom06-65ktpm/src/
     ├── meal_nutrition_flow_test.dart                     # Gợi ý/đổi món, xác nhận tên món, ảnh riêng tư & widget test (4 tests)
     ├── meal_photo_processing_test.dart                   # Validate client/adapter, xóa EXIF JPEG/PNG/WebP, nén lặp (7 tests)
     ├── meal_resilience_offline_test.dart                 # Từ chối quyền, ảnh lỗi, SQLite bền vững qua restart, thiếu store (9 tests)
-    ├── supabase_meal_photo_retry_test.dart               # Adapter Supabase + HTTP cục bộ: mất phản hồi, 409 Conflict vs Duplicate, hàng đợi 2 ảnh 413/200, 403 (5 tests)
+    ├── supabase_meal_photo_retry_test.dart               # Adapter Supabase + HTTP cục bộ: mất phản hồi, 409 Conflict vs Duplicate, 413/200, 429/500/unclassified, lỗi ghi SQLite sau 200 (7 tests)
     └── meal_ai_safety_boundary_test.dart                 # Không suy calo/dị nguyên từ ảnh, AI mở rộng không chặn lõi (5 tests)
 ```
 
@@ -64,7 +64,7 @@ nhom06-65ktpm/src/
    - Giới hạn ảnh gốc tối đa **10 MB**, ảnh sau xử lý/upload tối đa **1 MB**.
    - Xóa triệt để metadata EXIF/GPS/XMP/IPTC/Comment ở mức nhị phân cho JPEG (`APP1`/`APP13`/`COM`), PNG (`eXIf`/`tEXt`/`iTXt`/`zTXt`) và WebP (`EXIF`/`XMP ` + bit cờ `VP8X`), sau đó chạy nén lặp qua `MealPhotoCompressor` (nếu có) và xóa lại EXIF.
    - Adapter Storage (`SupabasePrivateMealPhotoStorage`) gọi lại `validateForUpload`, ép đường dẫn riêng tư `<owner_uid>/<log_id>.<ext>`, xử lý lỗi mất phản hồi HTTP thành `networkOffline` và chỉ chấp nhận nhánh đã tồn tại ở lần retry (`isRetry: true`) khi gặp lỗi trùng object xác định (`Duplicate`/`ResourceAlreadyExists`), không coi mọi HTTP `409 Conflict` hoặc lần upload đầu (`isRetry: false`) là đã upload.
-   - Khi đồng bộ hàng đợi nhiều ảnh chờ (`retryPendingPhotoUploadsDetailed`), lỗi từ chối riêng từng ảnh (như `413`, `415`, `409 Conflict`, `MealPhotoException`) được ghi nhận riêng cho từng ảnh để báo người dùng biết ảnh nào cần sửa/chọn lại, bỏ khỏi hàng đợi tránh kẹt vòng lặp và tiếp tục gửi các ảnh hợp lệ phía sau.
+   - Khi đồng bộ hàng đợi nhiều ảnh chờ (`retryPendingPhotoUploadsDetailed`), chỉ gỡ ảnh khỏi hàng đợi khi xác định đúng lỗi riêng của ảnh (`MealPhotoException`, `400`, `409` khác lỗi trùng object, `413`, `415`, `422`) để báo người dùng sửa và tiếp tục gửi các ảnh hợp lệ phía sau. Với lỗi mạng, `408`, `429`, mọi `5xx`, `401/403`, lỗi chưa phân loại hoặc lỗi ghi `image_path` vào SQLite sau khi upload `200`, hệ thống luôn giữ nguyên ảnh trong hàng đợi cho lần thử lại sau.
    - Phía Supabase Storage: đã bổ sung migration `supabase/migrations/20261125_000004_meal_images_bucket_limits.sql` đặt `public = false`, `file_size_limit = 1048576` (1 MB) và `allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp']` cho bucket `meal-images`, giữ nguyên 4 chính sách RLS theo UID.
 3. **Từ chối quyền / ảnh lỗi / mất mạng không mất nhật ký & bền vững qua khởi động lại app**:
    - `pickAndPreparePhoto` bắt mọi lỗi quyền Camera/Thư viện, không có camera, ảnh lỗi và chuyển về hướng dẫn nhập tay mà không xóa dữ liệu người dùng đang nhập.
@@ -95,8 +95,8 @@ flutter test --no-pub
 ### Phạm vi đã kiểm tra và chưa kiểm tra
 - **Đã kiểm tra:**
   - `flutter analyze --no-pub`: không có lỗi/cảnh báo.
-  - `flutter test test/features/nutrition/ --no-pub`: **30/30** unit tests & widget tests đạt (bao gồm test mất phản hồi HTTP + retry `409 Duplicate`/`x-upsert`, chặn `409 Conflict` không phải lỗi trùng object, hàng đợi SQLite 2 ảnh khi Storage từ chối riêng ảnh đầu bằng `413` và chấp nhận ảnh thứ hai bằng `200`, lưu bền vững ảnh chờ SQLite qua đóng/mở lại app, báo đúng nhập tay khi không truyền store và chống lệch `ownerUid`/path traversal).
-  - `flutter test --no-pub`: toàn bộ **126/126** tests của dự án đạt.
+  - `flutter test test/features/nutrition/ --no-pub`: **32/32** unit tests & widget tests đạt (bao gồm test mất phản hồi HTTP + retry `409 Duplicate`/`x-upsert`, chặn `409 Conflict` không phải lỗi trùng object, hàng đợi SQLite 2 ảnh gặp `413`/`200`, giữ nguyên hàng đợi khi gặp `429`/`500`/lỗi chưa phân loại và khi ghi SQLite lỗi sau upload `200`, lưu bền vững ảnh chờ SQLite qua đóng/mở lại app, báo đúng nhập tay khi không truyền store và chống lệch `ownerUid`/path traversal).
+  - `flutter test --no-pub`: toàn bộ **128/128** tests của dự án trên nhánh này đạt.
 - **Chưa kiểm tra:**
   - Luồng chụp/chọn ảnh thật, cấp/thu hồi quyền Camera và nén native trên thiết bị Android vật lý vẫn cần kiểm tra khi nối adapter phần cứng (`image_picker` / bộ nén native).
   - Migration giới hạn bucket `20261125_000004_meal_images_bucket_limits.sql` đã có trong mã nguồn nhưng cần phối hợp với Hà áp dụng lên project Supabase của nhóm và kiểm thử upload/xem signed URL trực tiếp với 3 tài khoản A/B/C (Issue #9).

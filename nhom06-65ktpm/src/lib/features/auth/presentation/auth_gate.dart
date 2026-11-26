@@ -10,12 +10,14 @@ class AuthGate extends StatefulWidget {
     required this.auth,
     this.habitsPageBuilder,
     this.sleepPageBuilder,
+    this.profilePageBuilder,
     this.activityPageBuilder,
   });
 
   final AuthRepository auth;
   final Widget Function(AuthSession)? habitsPageBuilder;
   final Widget Function(AuthSession)? sleepPageBuilder;
+  final Widget Function(AuthSession)? profilePageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
 
   @override
@@ -65,6 +67,7 @@ class _AuthGateState extends State<AuthGate> {
                 session: session,
                 habitsPageBuilder: widget.habitsPageBuilder,
                 sleepPageBuilder: widget.sleepPageBuilder,
+                profilePageBuilder: widget.profilePageBuilder,
                 activityPageBuilder: widget.activityPageBuilder,
               );
       },
@@ -80,6 +83,7 @@ class _SessionNavigator extends StatefulWidget {
     required this.session,
     required this.habitsPageBuilder,
     required this.sleepPageBuilder,
+    required this.profilePageBuilder,
     required this.activityPageBuilder,
   });
 
@@ -87,6 +91,7 @@ class _SessionNavigator extends StatefulWidget {
   final AuthSession session;
   final Widget Function(AuthSession)? habitsPageBuilder;
   final Widget Function(AuthSession)? sleepPageBuilder;
+  final Widget Function(AuthSession)? profilePageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
 
   @override
@@ -108,6 +113,7 @@ class _SessionNavigatorState extends State<_SessionNavigator> {
             session: widget.session,
             habitsPageBuilder: widget.habitsPageBuilder,
             sleepPageBuilder: widget.sleepPageBuilder,
+            profilePageBuilder: widget.profilePageBuilder,
             activityPageBuilder: widget.activityPageBuilder,
           ),
         ),
@@ -122,6 +128,7 @@ class _SessionPage extends StatefulWidget {
     required this.session,
     required this.habitsPageBuilder,
     required this.sleepPageBuilder,
+    required this.profilePageBuilder,
     required this.activityPageBuilder,
   });
 
@@ -129,6 +136,7 @@ class _SessionPage extends StatefulWidget {
   final AuthSession session;
   final Widget Function(AuthSession)? habitsPageBuilder;
   final Widget Function(AuthSession)? sleepPageBuilder;
+  final Widget Function(AuthSession)? profilePageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
 
   @override
@@ -211,26 +219,14 @@ class _SessionPageState extends State<_SessionPage> {
                                 }),
                           child: const Text('Kiểm tra lại quyền'),
                         ),
-                        if (widget.habitsPageBuilder case final buildHabits?)
-                          FilledButton(
-                            onPressed:
-                                snapshot.connectionState ==
-                                        ConnectionState.done &&
-                                    snapshot.data?.allowed == true &&
-                                    !_signingOut
-                                ? () => Navigator.of(context).push<void>(
-                                    MaterialPageRoute<void>(
-                                      builder: (_) =>
-                                          buildHabits(widget.session),
-                                    ),
-                                  )
-                                : null,
-                            child: const Text('Mở thói quen'),
-                          ),
-                        if (widget.sleepPageBuilder case final buildSleep?)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: FilledButton(
+                        for (final entry in {
+                          'Mở hồ sơ và lịch': widget.profilePageBuilder,
+                          'Mở thói quen': widget.habitsPageBuilder,
+                          'Mở nhật ký ngủ': widget.sleepPageBuilder,
+                          'Nhật ký vận động': widget.activityPageBuilder,
+                        }.entries)
+                          if (entry.value case final buildPage?)
+                            FilledButton(
                               onPressed:
                                   snapshot.connectionState ==
                                           ConnectionState.done &&
@@ -239,33 +235,12 @@ class _SessionPageState extends State<_SessionPage> {
                                   ? () => Navigator.of(context).push<void>(
                                       MaterialPageRoute<void>(
                                         builder: (_) =>
-                                            buildSleep(widget.session),
+                                            buildPage(widget.session),
                                       ),
                                     )
                                   : null,
-                              child: const Text('Mở nhật ký ngủ'),
+                              child: Text(entry.key),
                             ),
-                          ),
-                        if (widget.activityPageBuilder
-                            case final buildActivity?)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: FilledButton(
-                              onPressed:
-                                  snapshot.connectionState ==
-                                          ConnectionState.done &&
-                                      snapshot.data?.allowed == true &&
-                                      !_signingOut
-                                  ? () => Navigator.of(context).push<void>(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) =>
-                                            buildActivity(widget.session),
-                                      ),
-                                    )
-                                  : null,
-                              child: const Text('Nhật ký vận động'),
-                            ),
-                          ),
                       ],
                     ),
                   ),

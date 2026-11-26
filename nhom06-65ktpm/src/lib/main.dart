@@ -16,6 +16,8 @@ import 'features/sleep/data/repositories/in_memory_sleep_repository.dart';
 import 'features/sleep/data/repositories/supabase_sleep_repository.dart';
 import 'features/sleep/domain/repositories/sleep_repository.dart';
 import 'features/sleep/presentation/pages/sleep_page.dart';
+import 'features/profile/data/supabase_profile_repository.dart';
+import 'features/profile/presentation/profile_page.dart';
 
 /// Khởi tạo và phân giải repository phù hợp cho module Thói quen:
 /// - Khi Supabase đã được cấu hình và khởi tạo (`isInitialized == true`):
@@ -155,6 +157,12 @@ class _HealthyLifeAppState extends State<HealthyLifeApp> {
           if (snapshot.data case final auth?) {
             return AuthGate(
               auth: auth,
+              profilePageBuilder: (session) => ProfilePage(
+                repository: SupabaseProfileRepository(
+                  Supabase.instance.client,
+                  session.uid,
+                ),
+              ),
               habitsPageBuilder: (session) => HabitsPage(
                 repository: SupabaseHabitRepository(),
                 currentUserId: session.uid,

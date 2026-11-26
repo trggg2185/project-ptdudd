@@ -9,12 +9,14 @@ class AuthGate extends StatefulWidget {
     super.key,
     required this.auth,
     this.habitsPageBuilder,
+    this.sleepPageBuilder,
     this.profilePageBuilder,
     this.activityPageBuilder,
   });
 
   final AuthRepository auth;
   final Widget Function(AuthSession)? habitsPageBuilder;
+  final Widget Function(AuthSession)? sleepPageBuilder;
   final Widget Function(AuthSession)? profilePageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
 
@@ -64,6 +66,7 @@ class _AuthGateState extends State<AuthGate> {
                 auth: widget.auth,
                 session: session,
                 habitsPageBuilder: widget.habitsPageBuilder,
+                sleepPageBuilder: widget.sleepPageBuilder,
                 profilePageBuilder: widget.profilePageBuilder,
                 activityPageBuilder: widget.activityPageBuilder,
               );
@@ -79,6 +82,7 @@ class _SessionNavigator extends StatefulWidget {
     required this.auth,
     required this.session,
     required this.habitsPageBuilder,
+    required this.sleepPageBuilder,
     required this.profilePageBuilder,
     required this.activityPageBuilder,
   });
@@ -86,6 +90,7 @@ class _SessionNavigator extends StatefulWidget {
   final AuthRepository auth;
   final AuthSession session;
   final Widget Function(AuthSession)? habitsPageBuilder;
+  final Widget Function(AuthSession)? sleepPageBuilder;
   final Widget Function(AuthSession)? profilePageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
 
@@ -107,6 +112,7 @@ class _SessionNavigatorState extends State<_SessionNavigator> {
             auth: widget.auth,
             session: widget.session,
             habitsPageBuilder: widget.habitsPageBuilder,
+            sleepPageBuilder: widget.sleepPageBuilder,
             profilePageBuilder: widget.profilePageBuilder,
             activityPageBuilder: widget.activityPageBuilder,
           ),
@@ -121,6 +127,7 @@ class _SessionPage extends StatefulWidget {
     required this.auth,
     required this.session,
     required this.habitsPageBuilder,
+    required this.sleepPageBuilder,
     required this.profilePageBuilder,
     required this.activityPageBuilder,
   });
@@ -128,6 +135,7 @@ class _SessionPage extends StatefulWidget {
   final AuthRepository auth;
   final AuthSession session;
   final Widget Function(AuthSession)? habitsPageBuilder;
+  final Widget Function(AuthSession)? sleepPageBuilder;
   final Widget Function(AuthSession)? profilePageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
 
@@ -214,6 +222,7 @@ class _SessionPageState extends State<_SessionPage> {
                         for (final entry in {
                           'Mở hồ sơ và lịch': widget.profilePageBuilder,
                           'Mở thói quen': widget.habitsPageBuilder,
+                          'Mở nhật ký ngủ': widget.sleepPageBuilder,
                           'Nhật ký vận động': widget.activityPageBuilder,
                         }.entries)
                           if (entry.value case final buildPage?)

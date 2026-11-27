@@ -346,6 +346,41 @@ class LocalDatabase {
     _opening = null;
   }
 
+  Future<void> clearOwnerData(String ownerUid) async {
+    final trimmedOwner = ownerUid.trim();
+    if (trimmedOwner.isEmpty) {
+      throw ArgumentError.value(ownerUid, 'ownerUid', 'Must not be empty.');
+    }
+
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete(
+        'local_records',
+        where: 'owner_uid = ?',
+        whereArgs: [trimmedOwner],
+      );
+      await txn.delete(
+        'sync_queue',
+        where: 'owner_uid = ?',
+        whereArgs: [trimmedOwner],
+      );
+      final pendingPhotoTable = await txn.query(
+        'sqlite_master',
+        columns: ['name'],
+        where: 'type = ? AND name = ?',
+        whereArgs: ['table', 'pending_meal_photos'],
+        limit: 1,
+      );
+      if (pendingPhotoTable.isNotEmpty) {
+        await txn.delete(
+          'pending_meal_photos',
+          where: 'owner_uid = ?',
+          whereArgs: [trimmedOwner],
+        );
+      }
+    });
+  }
+
   Future<void> _enqueue(
     DatabaseExecutor executor, {
     required String operationId,

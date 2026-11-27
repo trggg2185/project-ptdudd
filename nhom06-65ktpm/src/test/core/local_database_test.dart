@@ -29,6 +29,45 @@ void main() {
     expect(names, containsAll(['local_records', 'sync_queue']));
   });
 
+  test(
+    'clearOwnerData removes only the signed-in owner cache and queue',
+    () async {
+      await localDatabase.upsertRecord(
+        ownerUid: 'account-a',
+        entityType: 'habit_log',
+        recordId: 'record-a',
+        payload: {'note': 'data-a'},
+      );
+      await localDatabase.upsertRecord(
+        ownerUid: 'account-b',
+        entityType: 'habit_log',
+        recordId: 'record-b',
+        payload: {'note': 'data-b'},
+      );
+
+      await localDatabase.clearOwnerData('account-a');
+
+      expect(
+        await localDatabase.getRecord(
+          ownerUid: 'account-a',
+          entityType: 'habit_log',
+          recordId: 'record-a',
+        ),
+        isNull,
+      );
+      expect(
+        await localDatabase.getRecord(
+          ownerUid: 'account-b',
+          entityType: 'habit_log',
+          recordId: 'record-b',
+        ),
+        isNotNull,
+      );
+      expect(await localDatabase.getPendingChanges('account-a'), isEmpty);
+      expect(await localDatabase.getPendingChanges('account-b'), isNotEmpty);
+    },
+  );
+
   test('keeps records and queued changes scoped to their account', () async {
     await localDatabase.upsertRecord(
       ownerUid: 'firebase-user-a',

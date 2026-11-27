@@ -247,6 +247,9 @@ class _TestAuth implements AuthRepository {
   Future<void> signOut() async => changes.add(null);
 
   @override
+  Future<void> deleteAccount() async => changes.add(null);
+
+  @override
   Future<bool> hasDataAccess({bool refresh = false}) async {
     if (refresh) claimRefreshes++;
     if (failure case final error?) throw error;

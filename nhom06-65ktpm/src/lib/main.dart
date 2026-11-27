@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/backend.dart';
+import 'core/local_database.dart';
+import 'core/privacy_service.dart';
 import 'features/activity/data/repositories/in_memory_activity_repository.dart';
 import 'features/activity/data/repositories/supabase_activity_repository.dart';
 import 'features/activity/domain/repositories/activity_repository.dart';
@@ -80,11 +82,7 @@ class HealthyLifeApp extends StatefulWidget {
   final HabitRepository? habitRepository;
   final SleepRepository? sleepRepository;
 
-  const HealthyLifeApp({
-    super.key,
-    this.habitRepository,
-    this.sleepRepository,
-  });
+  const HealthyLifeApp({super.key, this.habitRepository, this.sleepRepository});
 
   @override
   State<HealthyLifeApp> createState() => _HealthyLifeAppState();
@@ -92,6 +90,7 @@ class HealthyLifeApp extends StatefulWidget {
 
 class _HealthyLifeAppState extends State<HealthyLifeApp> {
   late Future<AuthRepository?> _startup = _start();
+  final LocalDatabase _localDatabase = LocalDatabase();
 
   Future<AuthRepository?> _start() async {
     try {
@@ -174,6 +173,11 @@ class _HealthyLifeAppState extends State<HealthyLifeApp> {
               activityPageBuilder: (session) => ActivityPage(
                 repository: resolveActivityRepository(),
                 ownerUid: session.uid,
+              ),
+              privacyServiceBuilder: (session) => PrivacyService(
+                client: Supabase.instance.client,
+                localDatabase: _localDatabase,
+                currentOwnerUid: () => session.uid,
               ),
             );
           }

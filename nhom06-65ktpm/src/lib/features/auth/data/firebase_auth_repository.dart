@@ -96,6 +96,13 @@ class FirebaseAuthRepository implements AuthRepository {
     await _firebase(_auth.signOut);
   }
 
+  @override
+  Future<void> deleteAccount() async {
+    final user = _auth.currentUser;
+    if (user == null) throw AuthFailure.sessionExpired;
+    await _firebase(user.delete);
+  }
+
   Future<void> _initializeGoogle() async {
     try {
       // Google Services supplies default_web_client_id from google-services.json.
@@ -163,6 +170,7 @@ class FirebaseAuthRepository implements AuthRepository {
         'user-token-expired' ||
         'invalid-user-token' ||
         'user-signed-out' => AuthFailure.sessionExpired,
+        'requires-recent-login' => AuthFailure.requiresRecentLogin,
         _ => AuthFailure.unexpected,
       };
     }

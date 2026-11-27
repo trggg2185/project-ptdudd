@@ -18,6 +18,7 @@ enum AuthFailure implements Exception {
   emailSignInRequired,
   sessionExpired,
   awaitingDataAccess,
+  requiresRecentLogin,
   unexpected,
 }
 
@@ -29,5 +30,6 @@ abstract interface class AuthRepository {
   Future<void> sendPasswordReset(String email);
   Future<void> signInWithGoogle();
   Future<void> signOut();
+  Future<void> deleteAccount();
   Future<bool> hasDataAccess({bool refresh = false});
 }

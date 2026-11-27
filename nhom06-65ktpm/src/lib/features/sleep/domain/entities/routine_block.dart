@@ -1,6 +1,3 @@
-import 'package:timezone/timezone.dart' as tz;
-
-import '../../../profile/domain/profile_time.dart';
 import '../../../profile/domain/schedule_block.dart';
 
 /// Loại khối hoạt động hiển thị trên giao diện lịch sinh hoạt 24 giờ responsive.
@@ -62,31 +59,10 @@ class RoutineBlock {
       yield (start: startsAt, end: endsAt);
       return;
     }
-    if (!block.repeatsWeekly) {
-      final interval = block.occupiedTimeOn(block.localStart);
-      if (interval != null) yield interval;
-      return;
-    }
-    final endOfDay = DateTime(day.year, day.month, day.day + 1);
-    final location = profileLocation(block.timeZone)!;
-    final firstDayInZone = tz.TZDateTime.from(day, location);
-    final lastDayInZone = tz.TZDateTime.from(endOfDay, location);
-    // A night shift plus up to 24 hours' travel can extend into later days.
-    var date = DateTime.utc(
-      firstDayInZone.year,
-      firstDayInZone.month,
-      firstDayInZone.day - 3,
+    yield* block.occupiedTimesBetween(
+      day,
+      DateTime(day.year, day.month, day.day + 1),
     );
-    final last = calendarDate(lastDayInZone).add(const Duration(days: 1));
-    while (!date.isAfter(last)) {
-      final interval = block.occupiedTimeOn(date);
-      if (interval != null &&
-          interval.start.isBefore(endOfDay) &&
-          interval.end.isAfter(day)) {
-        yield interval;
-      }
-      date = date.add(const Duration(days: 1));
-    }
   }
 
   Duration get duration => endsAt.difference(startsAt);

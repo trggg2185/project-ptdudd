@@ -8,9 +8,14 @@ import 'profile_form.dart';
 import 'schedule_editor.dart';
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key, required this.repository});
+  const ProfilePage({
+    super.key,
+    required this.repository,
+    this.plannerPageBuilder,
+  });
 
   final ProfileRepository repository;
+  final WidgetBuilder? plannerPageBuilder;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -133,6 +138,16 @@ class _ProfilePageState extends State<ProfilePage>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Hồ sơ và lịch'),
+        actions: [
+          if (widget.plannerPageBuilder case final buildPlanner?)
+            IconButton(
+              tooltip: 'Lập lịch tuần',
+              onPressed: () =>
+                  Navigator.of(context)
+                      .push<void>(MaterialPageRoute(builder: buildPlanner)),
+              icon: const Icon(Icons.calendar_month_outlined),
+            ),
+        ],
         bottom: profile == null
             ? null
             : TabBar(

@@ -12,6 +12,7 @@ class AuthGate extends StatefulWidget {
     this.sleepPageBuilder,
     this.nutritionPageBuilder,
     this.profilePageBuilder,
+    this.plannerPageBuilder,
     this.activityPageBuilder,
   });
 
@@ -20,6 +21,7 @@ class AuthGate extends StatefulWidget {
   final Widget Function(AuthSession)? sleepPageBuilder;
   final Widget Function(AuthSession)? nutritionPageBuilder;
   final Widget Function(AuthSession)? profilePageBuilder;
+  final Widget Function(AuthSession)? plannerPageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
 
   @override
@@ -71,6 +73,7 @@ class _AuthGateState extends State<AuthGate> {
                 sleepPageBuilder: widget.sleepPageBuilder,
                 nutritionPageBuilder: widget.nutritionPageBuilder,
                 profilePageBuilder: widget.profilePageBuilder,
+                plannerPageBuilder: widget.plannerPageBuilder,
                 activityPageBuilder: widget.activityPageBuilder,
               );
       },
@@ -88,6 +91,7 @@ class _SessionNavigator extends StatefulWidget {
     required this.sleepPageBuilder,
     required this.nutritionPageBuilder,
     required this.profilePageBuilder,
+    required this.plannerPageBuilder,
     required this.activityPageBuilder,
   });
 
@@ -97,6 +101,7 @@ class _SessionNavigator extends StatefulWidget {
   final Widget Function(AuthSession)? sleepPageBuilder;
   final Widget Function(AuthSession)? nutritionPageBuilder;
   final Widget Function(AuthSession)? profilePageBuilder;
+  final Widget Function(AuthSession)? plannerPageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
 
   @override
@@ -120,6 +125,7 @@ class _SessionNavigatorState extends State<_SessionNavigator> {
             sleepPageBuilder: widget.sleepPageBuilder,
             nutritionPageBuilder: widget.nutritionPageBuilder,
             profilePageBuilder: widget.profilePageBuilder,
+            plannerPageBuilder: widget.plannerPageBuilder,
             activityPageBuilder: widget.activityPageBuilder,
           ),
         ),
@@ -136,6 +142,7 @@ class _SessionPage extends StatefulWidget {
     required this.sleepPageBuilder,
     required this.nutritionPageBuilder,
     required this.profilePageBuilder,
+    required this.plannerPageBuilder,
     required this.activityPageBuilder,
   });
 
@@ -145,6 +152,7 @@ class _SessionPage extends StatefulWidget {
   final Widget Function(AuthSession)? sleepPageBuilder;
   final Widget Function(AuthSession)? nutritionPageBuilder;
   final Widget Function(AuthSession)? profilePageBuilder;
+  final Widget Function(AuthSession)? plannerPageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
 
   @override
@@ -229,6 +237,7 @@ class _SessionPageState extends State<_SessionPage> {
                         ),
                         for (final entry in {
                           'Mở hồ sơ và lịch': widget.profilePageBuilder,
+                          'Mở lịch tuần': widget.plannerPageBuilder,
                           'Mở thói quen': widget.habitsPageBuilder,
                           'Mở nhật ký ngủ': widget.sleepPageBuilder,
                           'Nhật ký vận động': widget.activityPageBuilder,

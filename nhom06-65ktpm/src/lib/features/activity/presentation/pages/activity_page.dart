@@ -12,10 +12,12 @@ class ActivityPage extends StatefulWidget {
     super.key,
     required this.repository,
     required this.ownerUid,
+    this.initialActivityName,
   });
 
   final ActivityRepository repository;
   final String ownerUid;
+  final String? initialActivityName;
 
   @override
   State<ActivityPage> createState() => _ActivityPageState();
@@ -29,13 +31,19 @@ class _ActivityPageState extends State<ActivityPage>
   Timer? _clock;
   bool _requestingLocation = false;
 
-  final _activities = const [
+  static const _standardActivities = [
     'Chạy bộ',
     'Đi bộ',
     'Đạp xe',
     'Yoga',
     'Bơi',
     'Hoạt động khác',
+  ];
+  late final _activities = [
+    if (widget.initialActivityName case final name?
+        when !_standardActivities.contains(name))
+      name,
+    ..._standardActivities,
   ];
 
   @override
@@ -46,6 +54,9 @@ class _ActivityPageState extends State<ActivityPage>
       repository: widget.repository,
       ownerUid: widget.ownerUid,
     );
+    if (widget.initialActivityName case final name?) {
+      _controller.setActivityName(name);
+    }
     _controller.loadSessions();
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});

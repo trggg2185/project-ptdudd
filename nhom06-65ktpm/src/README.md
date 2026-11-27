@@ -2,7 +2,7 @@
 
 ## Bắt đầu tại đây — dành cho thành viên và AI của thành viên
 
-**Bản tích hợp issue #1, #2, #4, #5, #7, #8, #10 và #11.** Trên Android/Web, tài khoản Firebase có quyền dữ liệu có thể mở **Hồ sơ và lịch**, **Thói quen**, **Nhật ký ngủ**, **Nhật ký vận động** và **Nhật ký bữa ăn**. Nhật ký bữa ăn trên Android dùng SQLite và sync worker trong `lib/core/`. Bộ gợi ý dùng danh mục mẫu, bộ lọc và xếp hạng. Tạo lịch tự động từ hồ sơ thuộc issue #3.
+**Bản tích hợp issue #1, #2, #3, #4, #5, #7, #8, #10 và #11.** Trên Android/Web, tài khoản Firebase có quyền dữ liệu có thể mở **Hồ sơ và lịch**, **Lịch tuần**, **Thói quen**, **Nhật ký ngủ**, **Nhật ký vận động** và **Nhật ký bữa ăn**. Nhật ký bữa ăn trên Android dùng SQLite và sync worker trong `lib/core/`. Lịch tuần dùng hồ sơ và danh mục gợi ý đã lọc.
 
 AI đọc [AGENTS.md](AGENTS.md) trước khi sửa mã, rồi đọc issue được giao và các phần liên quan trong README. Các mục 1–11 bên dưới là **đặc tả/kế hoạch**, không phải danh sách tính năng đã hoàn thành.
 
@@ -72,11 +72,20 @@ Android: chạy `flutter devices`, bật USB debugging nếu dùng điện tho�
 
 1. Trong **Hồ sơ**, xác nhận từ 18 tuổi, nhập múi giờ IANA (ví dụ `Asia/Ho_Chi_Minh`), mục tiêu, mức vận động, số buổi và số phút mỗi buổi. Có thể lưu hồ sơ chưa đủ điều kiện gợi ý. Khai báo công việc, môn tập, thiết bị, ngân sách, dị ứng và giờ ngủ theo nhu cầu. Khi chưa xác nhận dị ứng, đầu vào vẫn khóa gợi ý món ăn.
 2. Trong **Lịch bận**, chọn **Thêm khoảng bận** rồi chọn **Ca làm việc** nếu cần. Ví dụ ca `22:00–06:00` kết thúc hôm sau. Nhập số phút đi lại cho mỗi chiều. Có thể bật lặp mỗi tuần vào cùng thứ và chọn các ngày ngoại lệ. Chạm tên một mục để sửa.
-3. Trong **Lịch thủ công**, thêm giờ cho một hoạt động ngay cả khi hồ sơ chưa đủ điều kiện gợi ý. App lưu mục do bạn đặt giờ và hiển thị lại khi mở màn hình. Issue #3 sẽ dùng đầu vào này để xếp lịch tự động.
+3. Trong **Lịch thủ công**, thêm giờ cho một hoạt động ngay cả khi hồ sơ chưa đủ điều kiện gợi ý. App lưu mục do bạn đặt giờ và hiển thị lại khi mở màn hình. Các mục này được giữ chỗ khi tạo lịch tự động.
 
 Hồ sơ và lịch dùng các bảng `profiles` và `availability_blocks` đã triển khai. Tuỳ chọn của issue #2 nằm trong `profiles.living_conditions.healthylife_profile`. Lịch dùng UTC cho mốc thời gian và giữ múi giờ IANA, loại lịch, cờ lặp trong `recurrence_rule`. `HealthProfile.toRecommendationProfile()` cung cấp dữ liệu cho bộ gợi ý. `ScheduleBlock.occupiedTimeOn()` mở rộng kỳ lặp và cộng đi lại vào hai đầu khoảng bận.
 
 Chạy `flutter test test/features/profile` để thử xác thực đầu vào, ca đêm, ngày ngoại lệ, DST, lọc dị ứng và lưu lịch thủ công với repository giả.
+
+**Issue #3 — Lập lịch tuần.** Từ **Phiên đăng nhập** chọn **Mở lịch tuần**, hoặc dùng nút lịch ở thanh trên cùng của **Hồ sơ và lịch**.
+
+1. Chọn tuần và ngày cần xem. Ca làm, khoảng bận, đi lại, lịch thủ công trong hồ sơ và giờ ngủ mong muốn được giữ chỗ. Lịch lặp dùng múi giờ của ca đã khai báo và bỏ qua ngày ngoại lệ.
+2. Chọn **Tạo lịch nháp** để xếp các gợi ý vào khoảng trống. Mỗi ngày có tối đa một buổi tập tự động và mỗi buổi giữ thời lượng từ danh mục. App báo số buổi hoặc bữa chưa xếp được. Khi hồ sơ thiếu dữ kiện, dùng **Thêm hoạt động**. Mục nhập tay được khóa khi thêm.
+3. Dùng **Chỉnh lịch**, **Đổi giờ**, **Khóa mục** hoặc **Mở khóa** rồi chọn **Duyệt lịch**. App tải lại hồ sơ để kiểm tra xung đột trước khi duyệt. Bản nháp chỉ nằm trong phiên chỉnh sửa. Danh sách để nhắc lấy các mục sắp đến từ lịch đã duyệt. Issue #6 phụ trách gửi thông báo.
+4. Khi hoạt động tới giờ, chọn **Ghi nhật ký** để mở màn hình tương ứng. Quay lại lịch để ghi **Hoàn thành** hoặc **Bỏ qua**. **Tổng kết tuần** hiển thị kết quả do người dùng ghi, các mục sắp đến và các mục chưa ghi nhận. Lịch đã ghi kết quả được giữ khi duyệt lần sau.
+
+Chạy `flutter test --no-pub test/features/planner test/auth_flow_test.dart` để kiểm thử luồng trên. Khi triển khai, áp dụng [migration lịch tuần](supabase/migrations/20261127000006_weekly_planner.sql) để bật lưu bản đã duyệt và ghi kết quả trên Supabase. Migration bổ sung hai RPC ghi nguyên tử, kiểm tra phiên bản và dùng RLS hiện có.
 
 **Issue #5 — Nhật ký ngủ.** Chọn **Mở nhật ký ngủ** để nhập giờ ngủ/thức và mức tỉnh táo. Lịch sinh hoạt dùng ca làm và lịch bận từ hồ sơ, kể cả lịch lặp và ngày ngoại lệ. Khoảng ngủ mong muốn được chia sẻ giữa hai màn hình. [Hướng dẫn kiểm thử nhật ký ngủ](lib/features/sleep/README.md).
 
@@ -140,6 +149,7 @@ Khi cấp quyền thử, kiểm tra Firebase Project ID và UID của tài kho�
    3. [Dữ liệu danh mục và kiểm tra UID khi đồng bộ](supabase/migrations/20261123_000003_catalog_and_sync_integration.sql)
    4. [Giới hạn dung lượng và MIME của ảnh bữa ăn](supabase/migrations/20261125000004_meal_images_bucket_limits.sql)
    5. [Ràng buộc nhật ký ngủ và RPC khoảng ngủ mong muốn](supabase/migrations/20261125000005_sleep_constraints_and_window_merge.sql)
+   6. [Duyệt lịch tuần và lưu kết quả](supabase/migrations/20261127000006_weekly_planner.sql)
    4. [Seed 10 môn tập và 10 món ăn](supabase/seed/20261121_initial_catalog.sql)
 4. Xác nhận bucket `meal-images` ở chế độ riêng tư. Dùng hai tài khoản thử để tạo và check-in thói quen, rồi kiểm tra mỗi tài khoản chỉ thấy dữ liệu của mình. Nếu nhóm đã quản lý migrations bằng Supabase CLI, dùng lịch sử migration của nhóm để áp dụng các file còn thiếu.
 

@@ -162,6 +162,10 @@ void main() {
               Scaffold(appBar: AppBar(), body: Text('Vận động ${session.uid}')),
           nutritionPageBuilder: (session) =>
               Scaffold(appBar: AppBar(), body: Text('Bữa ăn ${session.uid}')),
+          plannerPageBuilder: (session) => Scaffold(
+            appBar: AppBar(),
+            body: Text('Lịch tuần ${session.uid}'),
+          ),
         ),
       ),
     );
@@ -178,7 +182,9 @@ void main() {
       FilledButton,
       'Mở nhật ký bữa ăn',
     );
+    final plannerButton = find.widgetWithText(FilledButton, 'Mở lịch tuần');
     expect(tester.widget<FilledButton>(profileButton).onPressed, isNull);
+    expect(tester.widget<FilledButton>(plannerButton).onPressed, isNull);
     expect(tester.widget<FilledButton>(nutritionButton).onPressed, isNull);
     expect(tester.widget<FilledButton>(activityButton).onPressed, isNull);
 
@@ -190,6 +196,12 @@ void main() {
     expect(find.text('Hồ sơ account-a'), findsOneWidget);
     await tester.pageBack();
     await tester.pumpAndSettle();
+    await tester.tap(plannerButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Lịch tuần account-a'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(activityButton);
     await tester.tap(activityButton);
     await tester.pumpAndSettle();
     expect(find.text('Vận động account-a'), findsOneWidget);

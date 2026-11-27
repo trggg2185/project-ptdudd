@@ -15,6 +15,14 @@ import 'features/habits/data/repositories/in_memory_habit_repository.dart';
 import 'features/habits/data/repositories/supabase_habit_repository.dart';
 import 'features/habits/domain/repositories/habit_repository.dart';
 import 'features/habits/presentation/pages/habits_page.dart';
+import 'features/notifications/data/gateways/flutter_local_notifications_gateway.dart';
+import 'features/notifications/data/gateways/in_memory_local_notification_gateway.dart';
+import 'features/notifications/data/repositories/in_memory_notification_repository.dart';
+import 'features/notifications/data/repositories/supabase_notification_repository.dart';
+import 'features/notifications/domain/repositories/local_notification_gateway.dart';
+import 'features/notifications/domain/repositories/notification_repository.dart';
+import 'features/notifications/domain/services/notification_account_coordinator.dart';
+import 'features/notifications/presentation/pages/notifications_page.dart';
 import 'features/nutrition/presentation/pages/meal_journal_page.dart';
 import 'features/sleep/data/repositories/in_memory_sleep_repository.dart';
 import 'features/sleep/data/repositories/supabase_sleep_repository.dart';
@@ -74,6 +82,25 @@ ActivityRepository resolveActivityRepository({
   return InMemoryActivityRepository();
 }
 
+/// Khởi tạo và phân giải repository phù hợp cho module Nhắc lịch & Giờ yên lặng (Issue #6):
+/// - Khi Supabase đã khởi tạo: kết nối qua `SupabaseNotificationRepository`.
+/// - Khi chạy độc lập/offline: dùng `InMemoryNotificationRepository(seedWithSamples: true)`.
+NotificationRepository resolveNotificationRepository({
+  NotificationRepository? customRepository,
+}) {
+  if (customRepository != null) return customRepository;
+
+  try {
+    if (Supabase.instance.isInitialized) {
+      return SupabaseNotificationRepository();
+    }
+  } catch (_) {
+    // Supabase chưa được khởi tạo
+  }
+
+  return InMemoryNotificationRepository(seedWithSamples: true);
+}
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const HealthyLifeApp());
@@ -83,8 +110,16 @@ void main() {
 class HealthyLifeApp extends StatefulWidget {
   final HabitRepository? habitRepository;
   final SleepRepository? sleepRepository;
+  final NotificationRepository? notificationRepository;
+  final LocalNotificationGateway? notificationGateway;
 
-  const HealthyLifeApp({super.key, this.habitRepository, this.sleepRepository});
+  const HealthyLifeApp({
+    super.key,
+    this.habitRepository,
+    this.sleepRepository,
+    this.notificationRepository,
+    this.notificationGateway,
+  });
 
   @override
   State<HealthyLifeApp> createState() => _HealthyLifeAppState();
@@ -93,6 +128,20 @@ class HealthyLifeApp extends StatefulWidget {
 class _HealthyLifeAppState extends State<HealthyLifeApp> {
   late Future<AuthRepository?> _startup = _start();
   late final _mealDatabase = LocalDatabase();
+  late final LocalNotificationGateway _notificationGateway =
+      widget.notificationGateway ?? FlutterLocalNotificationsGateway();
+  late final NotificationAccountCoordinator _notificationAccountCoordinator =
+      NotificationAccountCoordinator(
+        gateway: _notificationGateway,
+        repositoryResolver: () {
+          try {
+            if (Supabase.instance.isInitialized) {
+              return SupabaseNotificationRepository();
+            }
+          } catch (_) {}
+          return null;
+        },
+      );
 
   Future<AuthRepository?> _start() async {
     try {
@@ -104,6 +153,27 @@ class _HealthyLifeAppState extends State<HealthyLifeApp> {
 
   @override
   Widget build(BuildContext context) {
+    // Nếu được truyền notificationRepository cụ thể (ví dụ trong widget test hoặc demo độc lập):
+    if (widget.notificationRepository != null) {
+      final demoGateway =
+          widget.notificationGateway ?? InMemoryLocalNotificationGateway();
+      return MaterialApp(
+        title: 'HealthyLife - Nhắc lịch & Giờ yên lặng',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff216a52)),
+          inputDecorationTheme: const InputDecorationTheme(
+            border: OutlineInputBorder(),
+          ),
+        ),
+        home: NotificationsPage(
+          repository: widget.notificationRepository!,
+          gateway: demoGateway,
+          currentUserId: 'demo-user-duc-2351170585',
+        ),
+      );
+    }
     // Nếu được truyền sleepRepository cụ thể (ví dụ trong widget test hoặc demo độc lập):
     if (widget.sleepRepository != null) {
       return MaterialApp(
@@ -185,6 +255,19 @@ class _HealthyLifeAppState extends State<HealthyLifeApp> {
                 repository: resolveActivityRepository(),
                 ownerUid: session.uid,
               ),
+              notificationsPageBuilder: (session) => NotificationsPage(
+                repository: SupabaseNotificationRepository(),
+                gateway: _notificationGateway,
+                currentUserId: session.uid,
+                accountCoordinator: _notificationAccountCoordinator,
+              ),
+              onBeforeSignOut:
+                  _notificationAccountCoordinator.handleBeforeSignOut,
+              onAccountChanged: (previousUid, nextUid) =>
+                  _notificationAccountCoordinator.handleAccountChanged(
+                    previousUid: previousUid,
+                    nextUid: nextUid,
+                  ),
             );
           }
 

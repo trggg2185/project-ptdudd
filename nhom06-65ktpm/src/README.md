@@ -2,7 +2,7 @@
 
 ## Bắt đầu tại đây — dành cho thành viên và AI của thành viên
 
-**Bản tích hợp issue #1, #2, #4, #5, #7, #8, #10 và #11.** Trên Android/Web, tài khoản Firebase có quyền dữ liệu có thể mở **Hồ sơ và lịch**, **Thói quen**, **Nhật ký ngủ**, **Nhật ký vận động** và **Nhật ký bữa ăn**. Nhật ký bữa ăn trên Android dùng SQLite và sync worker trong `lib/core/`. Bộ gợi ý dùng danh mục mẫu, bộ lọc và xếp hạng. Tạo lịch tự động từ hồ sơ thuộc issue #3.
+**Bản tích hợp issue #1, #2, #4, #5, #6, #7, #8, #10 và #11.** Trên Android/Web, tài khoản Firebase có quyền dữ liệu có thể mở **Hồ sơ và lịch**, **Thói quen**, **Nhật ký ngủ**, **Nhật ký vận động**, **Nhật ký bữa ăn** và **Nhắc lịch & giờ yên lặng**. Nhật ký bữa ăn trên Android dùng SQLite và sync worker trong `lib/core/`. Bộ gợi ý dùng danh mục mẫu, bộ lọc và xếp hạng. Tạo lịch tự động từ hồ sơ thuộc issue #3.
 
 AI đọc [AGENTS.md](AGENTS.md) trước khi sửa mã, rồi đọc issue được giao và các phần liên quan trong README. Các mục 1–11 bên dưới là **đặc tả/kế hoạch**, không phải danh sách tính năng đã hoàn thành.
 
@@ -79,6 +79,8 @@ Hồ sơ và lịch dùng các bảng `profiles` và `availability_blocks` đã 
 Chạy `flutter test test/features/profile` để thử xác thực đầu vào, ca đêm, ngày ngoại lệ, DST, lọc dị ứng và lưu lịch thủ công với repository giả.
 
 **Issue #5 — Nhật ký ngủ.** Chọn **Mở nhật ký ngủ** để nhập giờ ngủ/thức và mức tỉnh táo. Lịch sinh hoạt dùng ca làm và lịch bận từ hồ sơ, kể cả lịch lặp và ngày ngoại lệ. Khoảng ngủ mong muốn được chia sẻ giữa hai màn hình. [Hướng dẫn kiểm thử nhật ký ngủ](lib/features/sleep/README.md).
+
+**Issue #6 — Nhắc lịch cục bộ & Giờ yên lặng.** Chọn **Mở nhắc lịch & giờ yên lặng** để cấu hình bật/tắt nhắc, khung giờ yên lặng (qua đêm lẫn ca đêm ban ngày), múi giờ IANA, tạm hoãn (snooze) và ẩn chi tiết sức khỏe trên màn hình khóa. Chỉ mục thuộc lịch đã duyệt (`approved`) mới tạo nhắc; đổi/xóa mục tự hủy nhắc cũ, có bộ chống trùng Local/FCM và tự hủy nhắc cục bộ cùng `device_tokens` khi đăng xuất hoặc đổi tài khoản Firebase. [Hướng dẫn kiểm thử và giới hạn thiết bị](lib/features/notifications/README.md).
 
 **Issue #11 — Nhật ký bữa ăn.** Chọn **Mở nhật ký bữa ăn** để nhập tên món, đổi món gợi ý và đính kèm ảnh nếu muốn. Android lưu nhật ký và ảnh chờ trong SQLite. Nút **Đồng bộ nhật ký** thử gửi lại khi có kết nối. Web đọc và ghi trực tuyến. [Hướng dẫn kiểm thử nhật ký bữa ăn](lib/features/nutrition/README.md).
 

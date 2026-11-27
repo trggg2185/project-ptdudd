@@ -28,7 +28,7 @@ Phụ trách: Phương Văn Đức (`@pvduc05`) — Review chéo: Hàn Hoàng H�
 - **Ghi/xóa nhật ký ngủ (`public.sleep_logs`):** `SupabaseSleepRepository` đi qua `SyncTransport` (`SupabaseSyncTransport` → RPC `apply_log_sync`) với `operation_id` UUID, `p_base_version` và `p_expected_owner_uid` thay vì `.upsert()` trực tiếp, giúp phát hiện xung đột phiên bản (`SleepConflictException`) khi hai thiết bị cùng chỉnh sửa bản ghi.
 - **Tách lỗi lưu và tải lại (`SleepController`):** nếu lưu thành công nhưng bước tải lại danh sách gặp lỗi mạng, ứng dụng giữ bản ghi đã lưu, đóng form và hiển thị biểu ngữ cảnh báo nhẹ (`syncWarning`) kèm nút **Tải lại** thay vì báo sai rằng thao tác lưu đã thất bại.
 - **Cập nhật khoảng ngủ mong muốn an toàn (`profiles.living_conditions`):** ưu tiên gọi RPC nguyên tử `upsert_sleep_window` (chỉ merge/xóa các khóa `sleep_start`, `sleep_end`, `sleep_label` bên trong `healthylife_profile`), đồng thời có fallback compare-and-swap (`updated_at` + `version`) nếu migration mới chưa được áp dụng lên cloud.
-- **Ràng buộc nghiệp vụ ở tầng DB (chưa áp dụng lên cloud):** migration đề xuất [`20261125_000004_sleep_constraints_and_window_merge.sql`](../../../supabase/migrations/20261125_000004_sleep_constraints_and_window_merge.sql) bổ sung check tối đa 24 giờ, trigger chống bản ghi tương lai và chống chồng lấn khoảng ngủ theo `owner_uid`, cùng RPC `upsert_sleep_window` — chờ `@HanHoangHa` duyệt trước khi triển khai lên Supabase cloud.
+- **Ràng buộc nghiệp vụ ở tầng DB (chưa áp dụng lên cloud):** migration đề xuất [`20261125000005_sleep_constraints_and_window_merge.sql`](../../../supabase/migrations/20261125000005_sleep_constraints_and_window_merge.sql) bổ sung check tối đa 24 giờ, trigger chống bản ghi tương lai và chống chồng lấn khoảng ngủ theo `owner_uid`, cùng RPC `upsert_sleep_window` — chờ `@HanHoangHa` duyệt trước khi triển khai lên Supabase cloud.
 
 ## Cách chạy và kiểm thử
 
@@ -43,5 +43,5 @@ flutter test --no-pub
 
 ## Giới hạn hiện tại
 
-- Các ca kiểm thử trong `test/features/sleep/` kiểm chứng `SupabaseSleepRepository` bằng `SyncTransport` giả lập cùng `InMemorySleepRepository` và fixture cục bộ; **chưa** kiểm chứng RPC/RLS/mạng trên Supabase cloud và **chưa** chạy migration `20261125_000004` lên cloud.
+- Các ca kiểm thử trong `test/features/sleep/` kiểm chứng `SupabaseSleepRepository` bằng `SyncTransport` giả lập cùng `InMemorySleepRepository` và fixture cục bộ; **chưa** kiểm chứng RPC/RLS/mạng trên Supabase cloud và **chưa** chạy migration `20261125000005` lên cloud.
 - Màn hình **Mở nhật ký ngủ** trên app chính yêu cầu phiên Firebase đã có claim `role: authenticated` để đồng bộ với Supabase; việc gắn hàng đợi offline SQLite `LocalSyncWorker` vào UI thuộc bước tích hợp chung.

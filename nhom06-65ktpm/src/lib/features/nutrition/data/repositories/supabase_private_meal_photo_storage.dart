@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../auth/domain/auth_repository.dart';
 import '../../domain/entities/meal_photo_access_error.dart';
 import '../../domain/entities/meal_photo_attachment.dart';
 import '../../domain/entities/meal_photo_policy.dart';
@@ -129,9 +130,9 @@ class SupabasePrivateMealPhotoStorage implements MealPhotoStorage {
         'Không được phép xóa ảnh thuộc tài khoản khác.',
       );
     }
-    await _client.storage
-        .from(MealPhotoStorage.privateBucketName)
-        .remove([storagePath]);
+    await _client.storage.from(MealPhotoStorage.privateBucketName).remove([
+      storagePath,
+    ]);
   }
 
   String _requireAuthenticatedOwner(String ownerUid) {
@@ -198,7 +199,8 @@ class SupabasePrivateMealPhotoStorage implements MealPhotoStorage {
   }
 
   static bool _isTransportError(Object error) {
-    if (error is SocketException ||
+    if (error == AuthFailure.network ||
+        error is SocketException ||
         error is TimeoutException ||
         error is HttpException ||
         error is HandshakeException) {

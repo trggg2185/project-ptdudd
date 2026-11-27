@@ -51,7 +51,8 @@ class DefaultMealPhotoProcessor implements MealPhotoProcessor {
     if (needsCompression && compressor != null) {
       for (final quality in _compressionQualities) {
         final candidate = await compressor!.compress(
-          bytes: workingBytes,
+          // Keep the original orientation available to the on-device compressor.
+          bytes: photo.bytes,
           mimeType: mimeType,
           maxBytes: validator.policy.maxUploadBytes,
           quality: quality,
@@ -184,7 +185,8 @@ class DefaultMealPhotoProcessor implements MealPhotoProcessor {
 
     var offset = 8;
     while (offset + 12 <= bytes.length) {
-      final length = (bytes[offset] << 24) |
+      final length =
+          (bytes[offset] << 24) |
           (bytes[offset + 1] << 16) |
           (bytes[offset + 2] << 8) |
           bytes[offset + 3];
@@ -219,7 +221,8 @@ class DefaultMealPhotoProcessor implements MealPhotoProcessor {
         bytes.sublist(offset, offset + 4),
         allowInvalid: true,
       );
-      final chunkSize = bytes[offset + 4] |
+      final chunkSize =
+          bytes[offset + 4] |
           (bytes[offset + 5] << 8) |
           (bytes[offset + 6] << 16) |
           (bytes[offset + 7] << 24);
@@ -246,10 +249,14 @@ class DefaultMealPhotoProcessor implements MealPhotoProcessor {
     final bodyBytes = body.toBytes();
     final riffSize = bodyBytes.length;
     final header = Uint8List(8)
-      ..[0] = 0x52 // R
-      ..[1] = 0x49 // I
-      ..[2] = 0x46 // F
-      ..[3] = 0x46 // F
+      ..[0] =
+          0x52 // R
+      ..[1] =
+          0x49 // I
+      ..[2] =
+          0x46 // F
+      ..[3] =
+          0x46 // F
       ..[4] = riffSize & 0xFF
       ..[5] = (riffSize >> 8) & 0xFF
       ..[6] = (riffSize >> 16) & 0xFF

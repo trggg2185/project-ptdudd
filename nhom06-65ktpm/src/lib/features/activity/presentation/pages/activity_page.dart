@@ -27,6 +27,7 @@ class _ActivityPageState extends State<ActivityPage>
   final _manualDurationController = TextEditingController();
   StreamSubscription<Position>? _positionSubscription;
   Timer? _clock;
+  bool _requestingLocation = false;
 
   final _activities = const [
     'Chạy bộ',
@@ -76,87 +77,101 @@ class _ActivityPageState extends State<ActivityPage>
     }
   }
 
-  Future<bool> _ensureLocationPermission() async {
+  Future<String?> _locationProblem() async {
     try {
       if (!await Geolocator.isLocationServiceEnabled()) {
-        _controller.setGpsStatus('Dịch vụ vị trí đang tắt');
-        return false;
+        return 'Dịch vụ vị trí đang tắt';
       }
+      if (!mounted) return null;
       var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
+      if (permission == LocationPermission.denied && mounted) {
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        _controller.setGpsStatus('Quyền GPS bị từ chối');
-        return false;
+        return 'Quyền GPS bị từ chối';
       }
-      return true;
+      return null;
     } catch (_) {
-      _controller.setGpsStatus(
-        'Không thể truy cập GPS. Bạn có thể nhập nhật ký thủ công.',
-      );
-      return false;
+      return 'Không thể truy cập GPS. Bạn có thể nhập nhật ký thủ công.';
     }
   }
 
-  Future<void> _startGps() async {
-    if (!await _ensureLocationPermission()) return;
-    await _positionSubscription?.cancel();
-    _positionSubscription = null;
-    _controller.startGps(DateTime.now());
-    _positionSubscription =
-        Geolocator.getPositionStream(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.best,
-            distanceFilter: 5,
-          ),
-        ).listen(
-          (position) {
-            _controller.setGpsStatus('Đang ghi GPS');
-            _controller.addGpsPoint(
-              GpsPoint(
-                latitude: position.latitude,
-                longitude: position.longitude,
-                accuracyMeters: position.accuracy,
-                recordedAt: position.timestamp,
-              ),
-            );
-          },
-          onError: (_) {
-            _controller.setGpsStatus('Mất tín hiệu GPS');
-          },
+  bool get _canRecordHere {
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    return mounted &&
+        (lifecycle == null || lifecycle == AppLifecycleState.resumed) &&
+        ModalRoute.of(context)?.isCurrent != false;
+  }
+
+  Future<void> _beginRecording({required bool resume}) async {
+    if (_requestingLocation) return;
+    setState(() => _requestingLocation = true);
+    try {
+      final problem = await _locationProblem();
+      final expectedStatus = resume
+          ? ActivityStatus.paused
+          : ActivityStatus.idle;
+      if (!_canRecordHere || _controller.tracker.status != expectedStatus) {
+        return;
+      }
+      if (problem != null) {
+        _controller.setGpsStatus(problem);
+        return;
+      }
+
+      final now = DateTime.now();
+      if (resume) {
+        _controller.resumeGps(now);
+      } else {
+        _controller.startGps(now);
+      }
+      _positionSubscription =
+          Geolocator.getPositionStream(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.best,
+              distanceFilter: 5,
+            ),
+          ).listen(
+            (position) {
+              if (!_canRecordHere ||
+                  _controller.tracker.status != ActivityStatus.recording) {
+                return;
+              }
+              _controller.setGpsStatus('Đang ghi GPS');
+              _controller.addGpsPoint(
+                GpsPoint(
+                  latitude: position.latitude,
+                  longitude: position.longitude,
+                  accuracyMeters: position.accuracy,
+                  recordedAt: position.timestamp,
+                ),
+              );
+            },
+            onError: (_) {
+              if (mounted &&
+                  _controller.tracker.status == ActivityStatus.recording) {
+                _controller.tracker.breakSegment();
+                _controller.setGpsStatus('Mất tín hiệu GPS');
+              }
+            },
+          );
+    } catch (_) {
+      if (mounted && _controller.tracker.status == ActivityStatus.recording) {
+        _pauseGps();
+        _controller.setGpsStatus(
+          'Không thể ghi GPS. Bạn có thể nhập thủ công.',
         );
+      }
+    } finally {
+      if (mounted) setState(() => _requestingLocation = false);
+    }
   }
 
   void _pauseGps() {
     _controller.pauseGps(DateTime.now());
     _positionSubscription?.cancel();
     _positionSubscription = null;
-  }
-
-  Future<void> _resumeGps() async {
-    if (!await _ensureLocationPermission()) return;
-    await _positionSubscription?.cancel();
-    _positionSubscription = null;
-    _controller.resumeGps(DateTime.now());
-    _positionSubscription =
-        Geolocator.getPositionStream(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.best,
-            distanceFilter: 5,
-          ),
-        ).listen((position) {
-          _controller.setGpsStatus('Đang ghi GPS');
-          _controller.addGpsPoint(
-            GpsPoint(
-              latitude: position.latitude,
-              longitude: position.longitude,
-              accuracyMeters: position.accuracy,
-              recordedAt: position.timestamp,
-            ),
-          );
-        }, onError: (_) => _controller.setGpsStatus('Mất tín hiệu GPS'));
   }
 
   void _stopGps() {
@@ -248,8 +263,10 @@ class _ActivityPageState extends State<ActivityPage>
                           Expanded(
                             child: FilledButton(
                               key: const Key('gps-start'),
-                              onPressed: status == ActivityStatus.idle
-                                  ? _startGps
+                              onPressed:
+                                  status == ActivityStatus.idle &&
+                                      !_requestingLocation
+                                  ? () => _beginRecording(resume: false)
                                   : null,
                               child: const Text('Start'),
                             ),
@@ -260,8 +277,9 @@ class _ActivityPageState extends State<ActivityPage>
                               key: const Key('gps-pause-resume'),
                               onPressed: status == ActivityStatus.recording
                                   ? _pauseGps
-                                  : status == ActivityStatus.paused
-                                  ? _resumeGps
+                                  : status == ActivityStatus.paused &&
+                                        !_requestingLocation
+                                  ? () => _beginRecording(resume: true)
                                   : null,
                               child: Text(
                                 status == ActivityStatus.paused
@@ -289,8 +307,10 @@ class _ActivityPageState extends State<ActivityPage>
                           key: const Key('save-route'),
                           contentPadding: EdgeInsets.zero,
                           value: _controller.routeSaved,
-                          onChanged: (value) =>
-                              _controller.setRouteSaved(value ?? false),
+                          onChanged: _controller.isLoading
+                              ? null
+                              : (value) =>
+                                    _controller.setRouteSaved(value ?? false),
                           title: const Text('Lưu tuyến đường'),
                           subtitle: const Text(
                             'Chỉ lưu tọa độ khi bạn chủ động chọn',
@@ -298,13 +318,17 @@ class _ActivityPageState extends State<ActivityPage>
                         ),
                         FilledButton(
                           key: const Key('save-gps-session'),
-                          onPressed: _saveGpsSession,
+                          onPressed: _controller.isLoading
+                              ? null
+                              : _saveGpsSession,
                           child: const Text('Lưu phiên'),
                         ),
                         const SizedBox(height: 8),
                         OutlinedButton(
                           key: const Key('cancel-gps-session'),
-                          onPressed: _controller.resetGps,
+                          onPressed: _controller.isLoading
+                              ? null
+                              : _controller.resetGps,
                           child: const Text('Hủy / Đặt lại phiên'),
                         ),
                       ],
@@ -326,7 +350,7 @@ class _ActivityPageState extends State<ActivityPage>
               const SizedBox(height: 8),
               OutlinedButton(
                 key: const Key('save-manual-session'),
-                onPressed: _saveManualSession,
+                onPressed: _controller.isLoading ? null : _saveManualSession,
                 child: const Text('Lưu nhật ký thủ công'),
               ),
               if (_controller.errorMessage != null) ...[

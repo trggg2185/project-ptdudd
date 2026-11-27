@@ -1,7 +1,10 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/backend.dart';
+import 'core/local_database.dart';
 import 'features/activity/data/repositories/in_memory_activity_repository.dart';
 import 'features/activity/data/repositories/supabase_activity_repository.dart';
 import 'features/activity/domain/repositories/activity_repository.dart';
@@ -12,6 +15,7 @@ import 'features/habits/data/repositories/in_memory_habit_repository.dart';
 import 'features/habits/data/repositories/supabase_habit_repository.dart';
 import 'features/habits/domain/repositories/habit_repository.dart';
 import 'features/habits/presentation/pages/habits_page.dart';
+import 'features/nutrition/presentation/pages/meal_journal_page.dart';
 import 'features/sleep/data/repositories/in_memory_sleep_repository.dart';
 import 'features/sleep/data/repositories/supabase_sleep_repository.dart';
 import 'features/sleep/domain/repositories/sleep_repository.dart';
@@ -80,11 +84,7 @@ class HealthyLifeApp extends StatefulWidget {
   final HabitRepository? habitRepository;
   final SleepRepository? sleepRepository;
 
-  const HealthyLifeApp({
-    super.key,
-    this.habitRepository,
-    this.sleepRepository,
-  });
+  const HealthyLifeApp({super.key, this.habitRepository, this.sleepRepository});
 
   @override
   State<HealthyLifeApp> createState() => _HealthyLifeAppState();
@@ -92,6 +92,7 @@ class HealthyLifeApp extends StatefulWidget {
 
 class _HealthyLifeAppState extends State<HealthyLifeApp> {
   late Future<AuthRepository?> _startup = _start();
+  late final _mealDatabase = LocalDatabase();
 
   Future<AuthRepository?> _start() async {
     try {
@@ -170,6 +171,15 @@ class _HealthyLifeAppState extends State<HealthyLifeApp> {
               sleepPageBuilder: (session) => SleepPage(
                 repository: SupabaseSleepRepository(),
                 currentUserId: session.uid,
+              ),
+              nutritionPageBuilder: (session) => MealJournalPage(
+                client: Supabase.instance.client,
+                ownerUid: session.uid,
+                currentOwnerUid: () => FirebaseAuth.instance.currentUser?.uid,
+                localDatabase:
+                    !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+                    ? _mealDatabase
+                    : null,
               ),
               activityPageBuilder: (session) => ActivityPage(
                 repository: resolveActivityRepository(),

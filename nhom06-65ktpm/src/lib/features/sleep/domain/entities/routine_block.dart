@@ -1,3 +1,8 @@
+import 'package:timezone/timezone.dart' as tz;
+
+import '../../../profile/domain/profile_time.dart';
+import '../../../profile/domain/schedule_block.dart';
+
 /// Loại khối hoạt động hiển thị trên giao diện lịch sinh hoạt 24 giờ responsive.
 enum RoutineBlockKind {
   /// Ca làm việc (bao gồm cả ca đêm qua nửa đêm, ví dụ 22:00–06:00).
@@ -25,6 +30,7 @@ class RoutineBlock {
   final DateTime startsAt;
   final DateTime endsAt;
   final int travelMinutes;
+  final ScheduleBlock? schedule;
 
   const RoutineBlock({
     required this.id,
@@ -33,7 +39,55 @@ class RoutineBlock {
     required this.startsAt,
     required this.endsAt,
     this.travelMinutes = 0,
+    this.schedule,
   });
+
+  factory RoutineBlock.fromScheduleBlock(ScheduleBlock block) => RoutineBlock(
+    id: block.id,
+    title: block.title,
+    kind: block.kind == ScheduleKind.work
+        ? RoutineBlockKind.workShift
+        : RoutineBlockKind.busy,
+    startsAt: block.startsAt,
+    endsAt: block.endsAt,
+    travelMinutes: block.travelMinutes,
+    schedule: block,
+  );
+
+  Iterable<({DateTime start, DateTime end})> intervalsForDay(
+    DateTime day,
+  ) sync* {
+    final block = schedule;
+    if (block == null) {
+      yield (start: startsAt, end: endsAt);
+      return;
+    }
+    if (!block.repeatsWeekly) {
+      final interval = block.occupiedTimeOn(block.localStart);
+      if (interval != null) yield interval;
+      return;
+    }
+    final endOfDay = DateTime(day.year, day.month, day.day + 1);
+    final location = profileLocation(block.timeZone)!;
+    final firstDayInZone = tz.TZDateTime.from(day, location);
+    final lastDayInZone = tz.TZDateTime.from(endOfDay, location);
+    // A night shift plus up to 24 hours' travel can extend into later days.
+    var date = DateTime.utc(
+      firstDayInZone.year,
+      firstDayInZone.month,
+      firstDayInZone.day - 3,
+    );
+    final last = calendarDate(lastDayInZone).add(const Duration(days: 1));
+    while (!date.isAfter(last)) {
+      final interval = block.occupiedTimeOn(date);
+      if (interval != null &&
+          interval.start.isBefore(endOfDay) &&
+          interval.end.isAfter(day)) {
+        yield interval;
+      }
+      date = date.add(const Duration(days: 1));
+    }
+  }
 
   Duration get duration => endsAt.difference(startsAt);
 }

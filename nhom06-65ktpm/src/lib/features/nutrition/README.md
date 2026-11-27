@@ -4,7 +4,10 @@
 - **Review chéo:** Nguyễn Thế Trưởng (`@trggg2185`)
 - **Nhánh phát triển:** `feature/nhom06/nutrition` (base PR nội bộ: `nhom06-65ktpm`)
 - **Phụ thuộc phối hợp:** Issue #7 (`LocalDatabase`, `public.meal_logs`, bucket riêng tư `meal-images`) và Issue #10 (`GetRecommendationsUseCase`, `MealCatalogItem`, `RecommendationProfile`).
-- **Trạng thái hiện tại:** Đã đồng bộ mới nhất từ `nhom06-65ktpm` (`464d08b` — bản tích hợp #1, #4, #7, #10), hoàn thiện luồng gợi ý/đổi món theo hồ sơ, xác nhận tên món người dùng, validate định dạng/kích thước ở client & adapter + bổ sung migration giới hạn phía Storage bucket `meal-images` (`20261125_000004_meal_images_bucket_limits.sql`), nén & xóa EXIF/GPS trên JPEG/PNG/WebP, xử lý retry idempotent khi mất phản hồi sau khi Storage đã lưu ảnh, lưu ảnh chờ bền vững trên SQLite (`LocalDatabasePendingMealPhotoStore`) qua đóng/mở lại app, báo đúng trạng thái nhập tay khi không có kho ảnh chờ, khóa suy luận calo/dị nguyên từ ảnh và tách ranh giới AI mở rộng. Chưa gắn vào `lib/main.dart`, chưa nối adapter phần cứng camera/nén native trên thiết bị Android thật và migration bucket cần được áp dụng lên project Supabase của nhóm cùng Hà.
+- Sau khi đăng nhập bằng tài khoản có quyền dữ liệu, chọn **Mở nhật ký bữa ăn**. Gợi ý dùng hồ sơ hiện tại và chờ xác nhận dị ứng. Bạn vẫn có thể nhập tay nếu hồ sơ chưa đủ hoặc ảnh bị lỗi.
+- Trên Android, chụp hoặc chọn ảnh bằng `image_picker`. Ảnh được đổi kích thước và nén trên thiết bị. SQLite giữ nhật ký và ảnh đã xử lý theo UID khi mất kết nối. Chọn **Đồng bộ nhật ký** hoặc **Thử đồng bộ … ảnh đang chờ** để gửi lại.
+- Trên Web, ứng dụng tải và lưu nhật ký trên Supabase. Khi mất mạng form giữ nội dung đang nhập để thử lại. Trình duyệt có thể cung cấp trình chọn tệp thay cho camera.
+- Mở ảnh từ nhật ký bằng URL ký ngắn hạn. Ảnh nằm trong bucket riêng tư.
 
 ---
 
@@ -59,13 +62,13 @@ nhom06-65ktpm/src/
 1. **Gợi ý/đổi món & xác nhận tên món (`MealNutritionUseCase` + `MealSuggestionSession`)**:
    - Tái sử dụng trực tiếp `GetRecommendationsUseCase` (Issue #10) nên đổi món chỉ xoay vòng trong danh sách đã lọc cứng dị ứng/thành phần rõ ràng.
    - Bắt buộc người dùng nhập hoặc xác nhận `confirmedMealName` trước khi lưu (`userConfirmedName = true`).
-2. **Validate ở app + giới hạn phía Storage, nén và xóa EXIF trước upload (`MealPhotoValidator`, `DefaultMealPhotoProcessor`, `MealPhotoStorage`, `20261125_000004_meal_images_bucket_limits.sql`)**:
+2. **Validate ở app + giới hạn phía Storage, nén và xóa EXIF trước upload (`MealPhotoValidator`, `DefaultMealPhotoProcessor`, `MealPhotoStorage`, `20261125000004_meal_images_bucket_limits.sql`)**:
    - Chỉ chấp nhận JPEG/PNG/WebP xác minh theo **magic bytes** và cấu trúc nhị phân hợp lệ (chặn tệp rỗng, tệp giả mạo đuôi `.jpg`, lệch MIME, ảnh hỏng).
    - Giới hạn ảnh gốc tối đa **10 MB**, ảnh sau xử lý/upload tối đa **1 MB**.
    - Xóa triệt để metadata EXIF/GPS/XMP/IPTC/Comment ở mức nhị phân cho JPEG (`APP1`/`APP13`/`COM`), PNG (`eXIf`/`tEXt`/`iTXt`/`zTXt`) và WebP (`EXIF`/`XMP ` + bit cờ `VP8X`), sau đó chạy nén lặp qua `MealPhotoCompressor` (nếu có) và xóa lại EXIF.
    - Adapter Storage (`SupabasePrivateMealPhotoStorage`) gọi lại `validateForUpload`, ép đường dẫn riêng tư `<owner_uid>/<log_id>.<ext>`, xử lý lỗi mất phản hồi HTTP thành `networkOffline` và chỉ chấp nhận nhánh đã tồn tại ở lần retry (`isRetry: true`) khi gặp lỗi trùng object xác định (`Duplicate`/`ResourceAlreadyExists`), không coi mọi HTTP `409 Conflict` hoặc lần upload đầu (`isRetry: false`) là đã upload.
    - Khi đồng bộ hàng đợi nhiều ảnh chờ (`retryPendingPhotoUploadsDetailed`), chỉ gỡ ảnh khỏi hàng đợi khi xác định đúng lỗi riêng của ảnh (`MealPhotoException`, `400`, `409` khác lỗi trùng object, `413`, `415`, `422`) để báo người dùng sửa và tiếp tục gửi các ảnh hợp lệ phía sau. Với lỗi mạng, `408`, `429`, mọi `5xx`, `401/403`, lỗi chưa phân loại hoặc lỗi ghi `image_path` vào SQLite sau khi upload `200`, hệ thống luôn giữ nguyên ảnh trong hàng đợi cho lần thử lại sau.
-   - Phía Supabase Storage: đã bổ sung migration `supabase/migrations/20261125_000004_meal_images_bucket_limits.sql` đặt `public = false`, `file_size_limit = 1048576` (1 MB) và `allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp']` cho bucket `meal-images`, giữ nguyên 4 chính sách RLS theo UID.
+   - Phía Supabase Storage: đã bổ sung migration `supabase/migrations/20261125000004_meal_images_bucket_limits.sql` đặt `public = false`, `file_size_limit = 1048576` (1 MB) và `allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp']` cho bucket `meal-images`, giữ nguyên 4 chính sách RLS theo UID.
 3. **Từ chối quyền / ảnh lỗi / mất mạng không mất nhật ký & bền vững qua khởi động lại app**:
    - `pickAndPreparePhoto` bắt mọi lỗi quyền Camera/Thư viện, không có camera, ảnh lỗi và chuyển về hướng dẫn nhập tay mà không xóa dữ liệu người dùng đang nhập.
    - `saveMealLogResilient` khi gặp mất mạng/mất phản hồi sẽ lưu ảnh sạch EXIF bền vững vào `LocalDatabasePendingMealPhotoStore` (bảng SQLite `pending_meal_photos` khóa chính `(owner_uid, log_id)`), lưu nhật ký vào `LocalDatabaseMealLogRepository` và đánh dấu `photoUploadStatus = pendingLocal`. Sau khi đóng rồi mở lại app, ảnh chờ và trạng thái `pendingLocal` vẫn được khôi phục đúng theo UID; khi retry thành công sẽ cập nhật `image_path` vào đúng `logId` cũ mà không tạo bản ghi trùng.
@@ -92,23 +95,7 @@ Chạy toàn bộ bộ test dự án:
 flutter test --no-pub
 ```
 
-### Phạm vi đã kiểm tra và chưa kiểm tra
-- **Đã kiểm tra:**
-  - `flutter analyze --no-pub`: không có lỗi/cảnh báo.
-  - `flutter test test/features/nutrition/ --no-pub`: **32/32** unit tests & widget tests đạt (bao gồm test mất phản hồi HTTP + retry `409 Duplicate`/`x-upsert`, chặn `409 Conflict` không phải lỗi trùng object, hàng đợi SQLite 2 ảnh gặp `413`/`200`, giữ nguyên hàng đợi khi gặp `429`/`500`/lỗi chưa phân loại và khi ghi SQLite lỗi sau upload `200`, lưu bền vững ảnh chờ SQLite qua đóng/mở lại app, báo đúng nhập tay khi không truyền store và chống lệch `ownerUid`/path traversal).
-  - `flutter test --no-pub`: toàn bộ **128/128** tests của dự án trên nhánh này đạt.
-- **Chưa kiểm tra:**
-  - Luồng chụp/chọn ảnh thật, cấp/thu hồi quyền Camera và nén native trên thiết bị Android vật lý vẫn cần kiểm tra khi nối adapter phần cứng (`image_picker` / bộ nén native).
-  - Migration giới hạn bucket `20261125_000004_meal_images_bucket_limits.sql` đã có trong mã nguồn nhưng cần phối hợp với Hà áp dụng lên project Supabase của nhóm và kiểm thử upload/xem signed URL trực tiếp với 3 tài khoản A/B/C (Issue #9).
+### Kiểm thử Android thật và backend
 
----
-
-## 4. Đề xuất phối hợp tích hợp
-
-- **Với Trưởng (`@trggg2185` — `auth`, `profile`, `app/`):**
-  - Gắn `MealLogComposerView` vào `_SessionNavigator` của `AuthGate` (đã hỗ trợ làm mới dữ liệu & xóa ảnh tạm khi đổi `ownerUid`); truyền `ownerUid` từ `AuthSession` và `RecommendationProfile` từ hồ sơ người dùng.
-  - `SupabasePrivateMealPhotoStorage` yêu cầu truyền `currentOwnerUid` bắt buộc đồng nhất với `SupabaseSyncTransport` (commit `464d08b`), chặn truy cập/tải lên chéo tài khoản.
-  - Khi đăng xuất/đổi tài khoản, gọi `pendingPhotoStore.clearForOwner(oldUid)` hoặc xử lý hàng đợi chờ rõ ràng theo quy định bảo mật.
-- **Với Hà (`@HanHoangHa` — `supabase/migrations`, `LocalDatabase`):**
-  - `MealLog.toSupabasePayload()` đã khớp các cột `meal_id`, `meal_name`, `image_path`, `consumed_at`, `note` của bảng `public.meal_logs`, tương thích `LocalDatabase` + `LocalSyncWorker` (`entity_type = 'meal_log'`) và migration `20261123_000003_catalog_and_sync_integration.sql` (`p_expected_owner_uid` + trigger `advance_log_version`). Lưu ý khi ghi trực tiếp lần đầu lên `meal_logs` cần bảo đảm đã có hàng tối thiểu trong `public.profiles` (tương tự `SupabaseHabitRepository`).
-  - Đã thêm migration `supabase/migrations/20261125_000004_meal_images_bucket_limits.sql` đặt `public = false`, `file_size_limit = 1048576` (1 MB) và `allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp']` cho bucket `'meal-images'`, giữ nguyên 4 chính sách RLS theo UID. Nhờ Hà áp dụng migration này lên project Supabase của nhóm để thực thi giới hạn trực tiếp phía Storage.
+- Trên Android thật, thử chụp/chọn ảnh, từ chối quyền, bỏ ảnh để lưu nhập tay, và ngắt mạng sau khi mở nhật ký. Mở lại với cùng tài khoản, kiểm tra bản ghi và gửi ảnh chờ. Dùng tài khoản thử thứ hai để xác nhận dữ liệu được cô lập.
+- Migration [giới hạn bucket](../../../supabase/migrations/20261125000004_meal_images_bucket_limits.sql) đặt chế độ riêng tư, giới hạn 1 MiB và MIME JPEG, PNG, WebP. Sau khi áp dụng trên project nhóm, thử tệp sai định dạng hoặc vượt dung lượng và xác nhận Storage từ chối. Kiểm tra việc mở ảnh bằng URL ký ngắn hạn.

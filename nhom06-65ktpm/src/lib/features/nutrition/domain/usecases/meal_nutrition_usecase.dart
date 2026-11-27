@@ -370,6 +370,10 @@ class MealNutritionUseCase {
         );
         continue;
       } on MealPhotoException catch (error) {
+        if (error.code == MealPhotoFailureCode.invalidOwnerPath) {
+          stoppedByNetworkError = true;
+          break;
+        }
         await _markPendingPhotoRejected(
           store: store,
           ownerUid: ownerUid,

@@ -160,6 +160,8 @@ void main() {
               Scaffold(appBar: AppBar(), body: Text('Hồ sơ ${session.uid}')),
           activityPageBuilder: (session) =>
               Scaffold(appBar: AppBar(), body: Text('Vận động ${session.uid}')),
+          nutritionPageBuilder: (session) =>
+              Scaffold(appBar: AppBar(), body: Text('Bữa ăn ${session.uid}')),
         ),
       ),
     );
@@ -172,7 +174,12 @@ void main() {
       'Nhật ký vận động',
     );
     expect(tester.widget<FilledButton>(button).onPressed, isNull);
+    final nutritionButton = find.widgetWithText(
+      FilledButton,
+      'Mở nhật ký bữa ăn',
+    );
     expect(tester.widget<FilledButton>(profileButton).onPressed, isNull);
+    expect(tester.widget<FilledButton>(nutritionButton).onPressed, isNull);
     expect(tester.widget<FilledButton>(activityButton).onPressed, isNull);
 
     auth.dataAccess = true;
@@ -188,6 +195,13 @@ void main() {
     expect(find.text('Vận động account-a'), findsOneWidget);
     await tester.pageBack();
     await tester.pumpAndSettle();
+    await tester.ensureVisible(nutritionButton);
+    await tester.tap(nutritionButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Bữa ăn account-a'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(button);
     await tester.tap(button);
     await tester.pumpAndSettle();
     expect(find.text('account-a'), findsOneWidget);

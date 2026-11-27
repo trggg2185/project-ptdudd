@@ -154,7 +154,7 @@ class LocalSyncWorker {
   final LocalDatabase localDatabase;
   final SyncTransport transport;
 
-  Future<int> flush(String ownerUid) async {
+  Future<int> flush(String ownerUid, {String? entityType}) async {
     if (ownerUid.trim().isEmpty) {
       throw ArgumentError.value(ownerUid, 'ownerUid', 'Must not be empty.');
     }
@@ -162,6 +162,7 @@ class LocalSyncWorker {
     final pending = await localDatabase.getPendingChanges(ownerUid);
     var syncedCount = 0;
     for (final change in pending) {
+      if (entityType != null && change['entity_type'] != entityType) continue;
       await _syncChange(ownerUid, change);
       syncedCount++;
     }
@@ -192,6 +193,17 @@ class LocalSyncWorker {
         ..remove('version')
         ..remove('created_at')
         ..remove('updated_at');
+      if (entityType == 'meal_log') {
+        payload.removeWhere(
+          (key, _) => const {
+            'catalog_slug',
+            'user_confirmed_name',
+            'meal_type',
+            'photo_source',
+            'photo_upload_status',
+          }.contains(key),
+        );
+      }
     } else if (operation != 'delete') {
       throw StateError('Unsupported sync operation: $operation');
     }

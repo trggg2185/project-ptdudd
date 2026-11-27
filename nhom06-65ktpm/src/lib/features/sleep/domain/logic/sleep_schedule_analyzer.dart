@@ -23,14 +23,12 @@ class DailySleepSummary {
   final DateTime date;
   final List<SleepLog> logs;
 
-  const DailySleepSummary({
-    required this.date,
-    required this.logs,
-  });
+  const DailySleepSummary({required this.date, required this.logs});
 
   bool get hasData => logs.isNotEmpty;
 
-  int get totalMinutes => logs.fold<int>(0, (sum, log) => sum + log.durationMinutes);
+  int get totalMinutes =>
+      logs.fold<int>(0, (sum, log) => sum + log.durationMinutes);
 
   Duration get totalDuration => Duration(minutes: totalMinutes);
 
@@ -99,7 +97,7 @@ class SleepScheduleAnalyzer {
   ///   - Khi giờ thức > giờ ngủ (ví dụ ca đêm 08:00 → 15:30): cùng ngày.
   ///   - Khi giờ thức == giờ ngủ: ném [SleepValidationException] để tránh nhầm 0 phút hoặc 24 giờ.
   static ({DateTime sleptAt, DateTime wokeAt, bool crossesMidnight})
-      resolveSleepInterval({
+  resolveSleepInterval({
     required DateTime startDate,
     required int bedHour,
     required int bedMinute,
@@ -172,12 +170,12 @@ class SleepScheduleAnalyzer {
     DateTime? referenceNow,
   }) {
     if (log.ownerUid.trim().isEmpty) {
-      throw const SleepValidationException('Thiếu thông tin tài khoản người dùng.');
+      throw const SleepValidationException(
+        'Thiếu thông tin tài khoản người dùng.',
+      );
     }
     if (!log.wokeAt.isAfter(log.sleptAt)) {
-      throw const SleepValidationException(
-        'Giờ thức dậy phải sau giờ đi ngủ.',
-      );
+      throw const SleepValidationException('Giờ thức dậy phải sau giờ đi ngủ.');
     }
     final durationMins = log.durationMinutes;
     if (durationMins <= 0) {
@@ -366,7 +364,8 @@ class SleepScheduleAnalyzer {
             date: normDate,
             startMinute: sleepWindow.startMinute,
             endMinute: sleepWindow.endMinute,
-            subtitle: '${sleepWindow.formattedRange} (${sleepWindow.formattedDuration})',
+            subtitle:
+                '${sleepWindow.formattedRange} (${sleepWindow.formattedDuration})',
           ),
         );
       }
@@ -374,20 +373,20 @@ class SleepScheduleAnalyzer {
 
     // 2. Cắt các khối ca làm việc / khoảng bận (hỗ trợ ca đêm 22:00–06:00 qua ngày)
     for (final block in routineBlocks) {
-      final segments = splitIntervalAcrossDays(
-        sourceId: block.id,
-        title: block.title,
-        kind: block.kind,
-        startsAt: block.startsAt,
-        endsAt: block.endsAt,
-        subtitle: block.travelMinutes > 0
-            ? 'Di chuyển ~${block.travelMinutes} phút'
-            : null,
-      );
-      for (final seg in segments) {
-        if (DateHelper.isSameDay(seg.date, normDate)) {
-          result.add(seg);
-        }
+      for (final interval in block.intervalsForDay(normDate)) {
+        final segments = splitIntervalAcrossDays(
+          sourceId: block.id,
+          title: block.title,
+          kind: block.kind,
+          startsAt: interval.start,
+          endsAt: interval.end,
+          subtitle: block.travelMinutes > 0
+              ? 'Di chuyển ~${block.travelMinutes} phút'
+              : null,
+        );
+        result.addAll(
+          segments.where((seg) => DateHelper.isSameDay(seg.date, normDate)),
+        );
       }
     }
 
@@ -447,7 +446,8 @@ class SleepScheduleAnalyzer {
     final warnings = <String>{};
     for (final sleepSeg in targetSegs) {
       for (final busySeg in busySegs) {
-        final overlaps = sleepSeg.startMinute < busySeg.endMinute &&
+        final overlaps =
+            sleepSeg.startMinute < busySeg.endMinute &&
             busySeg.startMinute < sleepSeg.endMinute;
         if (overlaps) {
           warnings.add(
@@ -504,14 +504,17 @@ class SleepScheduleAnalyzer {
     }
 
     // Trung bình tổng thời lượng ngủ theo từng ngày có ghi nhận
-    final totalMinutesAllLoggedDays =
-        loggedDays.fold<int>(0, (sum, d) => sum + d.totalMinutes);
-    final avgMinutes =
-        (totalMinutesAllLoggedDays / loggedDays.length).round();
+    final totalMinutesAllLoggedDays = loggedDays.fold<int>(
+      0,
+      (sum, d) => sum + d.totalMinutes,
+    );
+    final avgMinutes = (totalMinutesAllLoggedDays / loggedDays.length).round();
 
     // Trung bình mức tỉnh táo tự đánh giá
-    final totalAlertness =
-        validLogs.fold<int>(0, (sum, log) => sum + log.alertness.score);
+    final totalAlertness = validLogs.fold<int>(
+      0,
+      (sum, log) => sum + log.alertness.score,
+    );
     final avgAlertness = totalAlertness / validLogs.length;
 
     // Tính độ lệch giờ đi ngủ theo đồng hồ vòng tròn
@@ -523,11 +526,17 @@ class SleepScheduleAnalyzer {
       for (final log in validLogs) {
         final localStart = log.sleptAt.toLocal();
         final startMin = localStart.hour * 60 + localStart.minute;
-        totalDev += circularClockDistanceMinutes(startMin, sleepWindow.startMinute);
+        totalDev += circularClockDistanceMinutes(
+          startMin,
+          sleepWindow.startMinute,
+        );
       }
       avgBedtimeDeviation = (totalDev / validLogs.length).round();
       // Lệch 0 phút => 100 điểm; mỗi 3 phút lệch trung bình trừ 1 điểm (tối thiểu 0)
-      regularityScore = max(0, min(100, 100 - (avgBedtimeDeviation / 3).round()));
+      regularityScore = max(
+        0,
+        min(100, 100 - (avgBedtimeDeviation / 3).round()),
+      );
     } else if (validLogs.length >= 2) {
       // Không có khoảng ngủ mục tiêu: tính độ ổn định dựa trên chênh lệch cặp giờ đi ngủ liền kề
       final sorted = List<SleepLog>.from(validLogs)

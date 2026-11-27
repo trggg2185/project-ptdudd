@@ -159,12 +159,12 @@ void main() {
       );
       final listScrollable = find.byType(Scrollable).first;
       await tester.scrollUntilVisible(
-        find.textContaining('Ảnh riêng tư: firebase-uid-dai/'),
+        find.byTooltip('Xem ảnh bữa ăn'),
         200,
         scrollable: listScrollable,
       );
       expect(
-        find.textContaining('Ảnh riêng tư: firebase-uid-dai/'),
+        find.byTooltip('Xem ảnh bữa ăn'),
         findsOneWidget,
       );
     });

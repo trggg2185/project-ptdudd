@@ -42,34 +42,35 @@ class SupabaseActivityRepository implements ActivityRepository {
       'duration_seconds': session.durationSeconds,
       'estimated_distance_meters': session.estimatedDistanceMeters,
       'feeling': session.feeling,
-      'route_saved': session.routeSaved,
+      'route_saved': false,
     });
 
-    await client
-        .from('route_points')
-        .delete()
-        .eq('owner_uid', session.ownerUid)
-        .eq('session_id', session.id);
-
-    if (session.routeSaved && session.route.isNotEmpty) {
+    if (!session.routeSaved || session.route.isEmpty) {
       await client
           .from('route_points')
-          .insert(
-            session.route
-                .map(
-                  (point) => {
-                    'id': _uuid.v4(),
-                    'owner_uid': session.ownerUid,
-                    'session_id': session.id,
-                    'latitude': point.latitude,
-                    'longitude': point.longitude,
-                    'accuracy_meters': point.accuracyMeters,
-                    'recorded_at': point.recordedAt.toUtc().toIso8601String(),
-                  },
-                )
-                .toList(),
-          );
+          .delete()
+          .eq('owner_uid', session.ownerUid)
+          .eq('session_id', session.id);
+      return;
     }
+
+    await client.from('route_points').upsert([
+      for (final (index, point) in session.route.indexed)
+        {
+          'id': _uuid.v5(Namespace.url.value, '${session.id}:$index'),
+          'owner_uid': session.ownerUid,
+          'session_id': session.id,
+          'latitude': point.latitude,
+          'longitude': point.longitude,
+          'accuracy_meters': point.accuracyMeters,
+          'recorded_at': point.recordedAt.toUtc().toIso8601String(),
+        },
+    ]);
+    await client
+        .from('activity_sessions')
+        .update({'route_saved': true})
+        .eq('owner_uid', session.ownerUid)
+        .eq('id', session.id);
   }
 
   @override

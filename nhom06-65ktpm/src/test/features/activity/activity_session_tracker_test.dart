@@ -204,6 +204,31 @@ void main() {
       expect(sessions.first.route, isNotEmpty);
     });
 
+    test('retry after a lost GPS save response keeps one session', () async {
+      const owner = 'route-test-user';
+      final repository = _LostFirstResponseRepository();
+      final controller = ActivityController(
+        repository: repository,
+        ownerUid: owner,
+      );
+      addTearDown(controller.dispose);
+      final started = DateTime(2026, 11, 25, 8);
+      final stopped = started.add(const Duration(minutes: 5));
+      controller.startGps(started);
+      controller.stopGps(stopped);
+
+      await controller.saveGpsSession(stopped);
+      expect(controller.tracker.status, ActivityStatus.stopped);
+      final first = (await repository.getSessions(ownerUid: owner)).single;
+      await controller.saveGpsSession(stopped);
+
+      expect(
+        (await repository.getSessions(ownerUid: owner)).single.id,
+        first.id,
+      );
+      expect(controller.tracker.status, ActivityStatus.idle);
+    });
+
     test('in-memory repository can save and load sessions', () async {
       const owner = 'user-8';
       final repository = InMemoryActivityRepository();
@@ -225,4 +250,17 @@ void main() {
       expect(await repository.getSessions(ownerUid: owner), [session]);
     });
   });
+}
+
+class _LostFirstResponseRepository extends InMemoryActivityRepository {
+  bool _loseNextResponse = true;
+
+  @override
+  Future<void> saveSession(ActivitySession session) async {
+    await super.saveSession(session);
+    if (_loseNextResponse) {
+      _loseNextResponse = false;
+      throw StateError('Save response lost');
+    }
+  }
 }

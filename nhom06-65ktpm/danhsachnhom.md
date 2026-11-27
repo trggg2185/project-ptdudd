@@ -4,7 +4,7 @@
 - **Kế thừa:** Bài ứng dụng kỷ luật cá nhân với Flutter.
 - **Lớp học phần / định danh:** 65KTPM / nhom06-65ktpm; lớp sinh hoạt từng người chờ xác nhận.
 - **Giảng viên:** ThS. Đỗ Oanh Cường (theo mẫu, nhóm cần xác nhận).
-- **Trạng thái:** Đề cương, cấu hình dùng chung và màn hình xác thực Firebase–Supabase (issue #1).
+- **Trạng thái (27/11/2026):** Đã merge 8 PR nội bộ (`#13`–`#20` cho các issue `#1`, `#2`, `#4`, `#5`, `#7`, `#8`, `#10`, `#11`) và triển khai Dashboard/báo cáo kiểm thử cho issue `#12` (`189/189` test tự động đạt). Xem chi tiết tại [Minh chứng đóng góp thực tế](docs/CONTRIBUTION_EVIDENCE.md) và [Báo cáo kiểm thử nghiệm thu](docs/ACCEPTANCE_TEST_REPORT.md). Tỷ lệ `%` đóng góp cuối cùng chờ cả nhóm thống nhất sau khi hoàn thiện các issue còn lại (`#3`, `#6`, `#9`).
 
 | STT | Họ và tên | MSSV | Lớp sinh hoạt | Vai trò | Nhiệm vụ dự kiến | Đóng góp (%) | Email |
 | --- | --- | --- | --- | --- | --- | --- | --- |

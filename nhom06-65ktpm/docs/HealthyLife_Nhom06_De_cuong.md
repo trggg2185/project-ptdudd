@@ -1,7 +1,7 @@
 # HealthyLife — Trợ lý kỷ luật và lối sống lành mạnh
 
 Đề cương cuối kỳ học phần Phát triển ứng dụng di động — Nhóm 06, 65KTPM.
-Trạng thái: kế hoạch phát triển và khung Flutter, chưa triển khai chức năng. Phân công và tiến độ dưới đây là đề xuất để nhóm thống nhất.
+Trạng thái cập nhật ngày 27/11/2026: đã tích hợp 8 PR nội bộ (issues #1, #2, #4, #5, #7, #8, #10, #11) và triển khai module tổng kết tuần #12; kết quả kiểm thử tự động đạt 189/189 ca, flutter analyze không lỗi, biên dịch Web và Android APK debug thành công. Các phần cốt lõi #3, #6, #9, hai migration cloud mới và kiểm thử trên điện thoại Android vật lý vẫn đang tiếp tục hoàn thiện; tính năng mở rộng AI và Health Connect chưa triển khai.
 
 ## 1. GIỚI THIỆU ĐỀ TÀI
 
@@ -200,12 +200,12 @@ Dùng A, B và C: A có dữ liệu, B có dữ liệu độc lập, C thử tru
 
 Mỗi thành viên chịu trách nhiệm cả triển khai, kiểm thử và tài liệu module phụ trách; review chéo trước merge. Tỷ lệ đóng góp, email và lớp sinh hoạt chờ nhóm xác nhận, không mặc định chia đều khi chưa có minh chứng.
 
-| Họ và tên | Module phụ trách | Công việc phối hợp | Sản phẩm nghiệm thu |
-| --- | --- | --- | --- |
-| Nguyễn Thế Trưởng — 2351170626 | Nhóm trưởng; auth, profile, planner | Kiến trúc, tích hợp Firebase–Supabase, review và PR | Hồ sơ, lịch không xung đột/ca đêm, bản tích hợp và test planner |
-| Phương Văn Đức — 2351170585 | habits, sleep, notifications | UI/UX responsive, streak và nhắc lịch cục bộ | CRUD thói quen, nhật ký ngủ, nhắc không trùng, test múi giờ/streak |
-| Hàn Hoàng Hà — 2051063882 | activity; Database/Storage, sync | GPS, SQLite, RLS, xóa dữ liệu; hỗ trợ schema toàn nhóm | Phiên GPS và fallback, migration/policies, đồng bộ retry và test ba tài khoản |
-| Nguyễn Đăng Đại — 2351170578 | nutrition, recommendations, insights | Camera, danh mục món/môn tập, tổng hợp kiểm thử/báo cáo | Nhật ký ảnh, gợi ý lọc dị ứng/thiết bị, dashboard, báo cáo và demo |
+| Họ và tên                      | Module phụ trách                     | Công việc phối hợp                                      | Sản phẩm nghiệm thu                                                           |
+| ------------------------------ | ------------------------------------ | ------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Nguyễn Thế Trưởng — 2351170626 | Nhóm trưởng; auth, profile, planner  | Kiến trúc, tích hợp Firebase–Supabase, review và PR     | Hồ sơ, lịch không xung đột/ca đêm, bản tích hợp và test planner               |
+| Phương Văn Đức — 2351170585    | habits, sleep, notifications         | UI/UX responsive, streak và nhắc lịch cục bộ            | CRUD thói quen, nhật ký ngủ, nhắc không trùng, test múi giờ/streak            |
+| Hàn Hoàng Hà — 2051063882      | activity; Database/Storage, sync     | GPS, SQLite, RLS, xóa dữ liệu; hỗ trợ schema toàn nhóm  | Phiên GPS và fallback, migration/policies, đồng bộ retry và test ba tài khoản |
+| Nguyễn Đăng Đại — 2351170578   | nutrition, recommendations, insights | Camera, danh mục món/môn tập, tổng hợp kiểm thử/báo cáo | Nhật ký ảnh, gợi ý lọc dị ứng/thiết bị, dashboard, báo cáo và demo            |
 
 ### 9.1. Kế hoạch sáu tuần từ khi nhóm chốt đề cương
 
@@ -239,9 +239,11 @@ Rủi ro chính: JWT/RLS, độ tin cậy nhắc trên thiết bị, GPS/pin, đ
 - Camera/GPS: từ chối/thu hồi quyền, không có thiết bị, ảnh lỗi/quá lớn, tạm dừng/ra nền, mất tín hiệu; có nhập tay và không thu ngầm. So sánh tuyến với một lộ trình thử, báo sai số quan sát thay vì đặt độ chính xác giả định.
 - Sync/bảo mật: offline rồi online, retry cùng UUID, sửa xung đột hai máy, đổi tài khoản, truy cập chéo A/B/C, URL ảnh, xóa tài khoản; không trùng nhật ký hoặc rò dữ liệu.
 - Chất lượng: flutter analyze không lỗi, unit tests quy tắc/planner/streak và integration tests luồng chính đạt; demo Android thật và Web. Báo cáo ghi số ca đạt/tổng ca và lỗi còn lại sau kiểm thử, chưa công bố kết quả khi chưa chạy.
+- Kết quả đo kiểm thực tế tính đến ngày 27/11/2026 (chi tiết trong docs/ACCEPTANCE_TEST_REPORT.md và docs/CONTRIBUTION_EVIDENCE.md): flutter analyze --no-pub đạt 0 lỗi; flutter test --no-pub đạt 189/189 ca trên 28 tệp kiểm thử thuộc 9/12 module (#1 auth 11, #2 profile 11, #4 habits 36, #5 sleep 24, #7 core sync 14, #8 activity GPS 13, #10 recommendations 35, #11 nutrition 34, #12 insights 11); flutter build web --no-pub và flutter build apk --debug --no-pub đều thành công; đã có 5 ảnh minh chứng bước đầu trên Android Emulator (API 37) và Chrome Web (docs/demo/README.md).
+- Hạng mục còn lại cần hoàn tất trước khi nộp bản cuối: hoàn thiện và merge ba issue cốt lõi #3 (planner), #6 (notifications), #9 (kiểm thử ba tài khoản A/B/C và xóa dữ liệu); áp dụng hai migration 20261125000004 (giới hạn bucket meal-images) và 20261125000005 (ràng buộc sleep_logs) lên Supabase cloud; nối recommendations (#10) và insights (#12) vào điều hướng AuthGate; bổ sung integration_test và chụp đủ minh chứng GPS/camera trên điện thoại Android vật lý cùng các màn hình sau đăng nhập trên Web. Do cốt lõi chưa hoàn tất toàn bộ, hai tính năng mở rộng AI và Health Connect chưa được triển khai.
 
 ## 11. KẾT LUẬN
 
 HealthyLife nâng cấp bài kỷ luật cá nhân thành hệ thống hỗ trợ xây dựng lịch sống lành mạnh theo điều kiện người dùng. Đề cương kết hợp các chức năng cốt lõi khả thi, dữ liệu cloud, lưu cục bộ, camera và GPS, đồng thời tách rõ tính năng mở rộng để bảo đảm tiến độ.
 
-Giá trị của đề tài nằm ở khả năng đưa gợi ý vào lịch thực tế, giải thích lựa chọn, ghi nhận tiến độ và bảo vệ dữ liệu. Hiệu quả cải thiện sức khỏe chưa được kiểm chứng và không phải cam kết nghiệm thu; nhóm sẽ đánh giá tính đúng đắn chức năng, khả năng sử dụng và sự nhất quán của dữ liệu.
+Giá trị của đề tài nằm ở khả năng đưa gợi ý vào lịch thực tế, giải thích lựa chọn, ghi nhận tiến độ và bảo vệ dữ liệu. Hiệu quả cải thiện sức khỏe chưa được kiểm chứng và không phải cam kết nghiệm thu; nhóm sẽ đánh giá tính đúng đắn chức năng, khả năng sử dụng và sự nhất quán của dữ liệu. Các số liệu kiểm thử, lỗi còn lại, minh chứng đóng góp theo lịch sử Git và ảnh demo được duy trì đồng bộ tại thư mục docs của nhóm.

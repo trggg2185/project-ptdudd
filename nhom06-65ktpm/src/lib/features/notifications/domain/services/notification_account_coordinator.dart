@@ -17,6 +17,7 @@ class NotificationAccountCoordinator {
 
   String? _activeOwnerUid;
   final Map<String, Map<String, DateTime>> _snoozesByOwner = {};
+  final Set<String> _recentlyDeactivatedOnSignOut = {};
 
   NotificationAccountCoordinator({
     required this.gateway,
@@ -44,24 +45,36 @@ class NotificationAccountCoordinator {
     _snoozesByOwner[ownerUid]?.remove(itemId);
   }
 
-  /// Gọi trước khi thực thi `auth.signOut()` để thu hồi nhắc lịch & token của [ownerUid].
+  /// Gọi trước khi thực thi `auth.signOut()` để thu hồi nhắc lịch & vô hiệu hóa token của [ownerUid].
   Future<void> handleBeforeSignOut(String ownerUid) async {
     if (ownerUid.trim().isEmpty) return;
     await _cleanupOwner(ownerUid, deactivateRemoteTokens: true);
+    _recentlyDeactivatedOnSignOut.add(ownerUid);
     if (_activeOwnerUid == ownerUid) {
       _activeOwnerUid = null;
     }
   }
 
-  /// Gọi khi luồng phiên Firebase đổi tài khoản (`previousUid != nextUid`).
+  /// Gọi khi luồng phiên Firebase đổi tài khoản (`A → B`) hoặc đăng xuất từ bên ngoài (`A → null`).
+  ///
+  /// Luôn hủy toàn bộ nhắc cục bộ, xóa cache chống trùng và vô hiệu hóa `device_tokens`
+  /// của tài khoản cũ (`previousUid`) trừ khi `handleBeforeSignOut` vừa dọn ngay trước đó.
   Future<void> handleAccountChanged({
     required String? previousUid,
     required String? nextUid,
   }) async {
+    if (nextUid != null && nextUid.isNotEmpty) {
+      _recentlyDeactivatedOnSignOut.remove(nextUid);
+    }
     if (previousUid != null &&
         previousUid.isNotEmpty &&
         previousUid != nextUid) {
-      await _cleanupOwner(previousUid, deactivateRemoteTokens: false);
+      final alreadyDeactivated =
+          _recentlyDeactivatedOnSignOut.remove(previousUid);
+      await _cleanupOwner(
+        previousUid,
+        deactivateRemoteTokens: !alreadyDeactivated,
+      );
     }
     _activeOwnerUid = nextUid;
   }

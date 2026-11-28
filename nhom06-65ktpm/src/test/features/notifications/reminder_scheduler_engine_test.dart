@@ -405,6 +405,36 @@ void main() {
         ),
         isFalse,
       );
+
+      // ScheduledReminder luôn đẩy nội dung trung tính ra hệ thống thông báo,
+      // kể cả khi có caller truyền hideDetailsOnLockScreen: false
+      final reminder = ScheduledReminder(
+        notificationId: 42,
+        ownerUid: userA,
+        planId: 'plan-1',
+        itemId: sensitiveItem.itemId,
+        itemType: sensitiveItem.itemType,
+        dedupeKey: sensitiveItem.dedupeKey,
+        originalScheduledAtUtc: sensitiveItem.startsAtUtc,
+        effectiveScheduledAtUtc: sensitiveItem.startsAtUtc,
+        timezoneName: 'Asia/Ho_Chi_Minh',
+        deferredByQuietHours: false,
+        isSnoozed: false,
+        lockScreenTitle: copy.lockScreenTitle,
+        lockScreenBody: copy.lockScreenBody,
+        inAppTitle: 'HealthyLife • Chi tiết trong app',
+        inAppBody: 'Đến giờ: Chạy bộ giảm cân 62 kg',
+        hideDetailsOnLockScreen: false,
+      );
+      expect(reminder.hideDetailsOnLockScreen, isTrue);
+      expect(reminder.systemNotificationTitle, copy.lockScreenTitle);
+      expect(reminder.systemNotificationBody, copy.lockScreenBody);
+      expect(
+        NotificationPrivacyFormatter.containsSensitiveHealthInfo(
+          reminder.systemNotificationBody,
+        ),
+        isFalse,
+      );
     });
 
     test('NotificationDeduplicator chặn phát trùng Local ↔ FCM trong cửa sổ TTL và cô lập theo tài khoản', () {

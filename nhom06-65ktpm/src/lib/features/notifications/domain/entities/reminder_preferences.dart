@@ -27,8 +27,8 @@ class ReminderPreferences {
   /// Múi giờ IANA chuẩn (ví dụ `Asia/Ho_Chi_Minh`, `Asia/Tokyo`, `UTC`).
   final String timezone;
 
-  /// Mặc định bật ẩn toàn bộ chi tiết sức khỏe trên màn hình khóa.
-  final bool hideHealthDetailsOnLockScreen;
+  /// Luôn bật ẩn chi tiết sức khỏe trên màn hình khóa (chính sách bảo mật bắt buộc của Issue #6).
+  bool get hideHealthDetailsOnLockScreen => true;
 
   /// Thời lượng tạm hoãn (snooze) mặc định tính theo phút.
   final int defaultSnoozeMinutes;
@@ -42,7 +42,7 @@ class ReminderPreferences {
     this.quietHoursStartMinute = 22 * 60,
     this.quietHoursEndMinute = 7 * 60,
     this.timezone = defaultProfileZone,
-    this.hideHealthDetailsOnLockScreen = true,
+    bool hideHealthDetailsOnLockScreen = true,
     this.defaultSnoozeMinutes = 10,
     this.version = 1,
     this.updatedAt,
@@ -182,8 +182,6 @@ class ReminderPreferences {
           ? null
           : (quietHoursEndMinute ?? this.quietHoursEndMinute),
       timezone: timezone ?? this.timezone,
-      hideHealthDetailsOnLockScreen:
-          hideHealthDetailsOnLockScreen ?? this.hideHealthDetailsOnLockScreen,
       defaultSnoozeMinutes: defaultSnoozeMinutes ?? this.defaultSnoozeMinutes,
       version: version ?? this.version,
       updatedAt: updatedAt ?? this.updatedAt,

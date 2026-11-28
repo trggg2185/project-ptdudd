@@ -47,7 +47,7 @@ class ScheduledReminder {
   final String inAppTitle;
   final String inAppBody;
 
-  /// Bật cờ ẩn chi tiết sức khỏe trên màn hình khóa (Android `VISIBILITY_PRIVATE`).
+  /// Luôn khóa ở chế độ ẩn chi tiết sức khỏe trên màn hình khóa (Android `VISIBILITY_PRIVATE`).
   final bool hideDetailsOnLockScreen;
 
   const ScheduledReminder({
@@ -66,16 +66,15 @@ class ScheduledReminder {
     required this.lockScreenBody,
     required this.inAppTitle,
     required this.inAppBody,
-    this.hideDetailsOnLockScreen = true,
-  });
+    bool hideDetailsOnLockScreen = true,
+  }) : hideDetailsOnLockScreen = true;
 
-  /// Tiêu đề thực tế đẩy ra hệ thống thông báo thiết bị.
-  String get systemNotificationTitle =>
-      hideDetailsOnLockScreen ? lockScreenTitle : inAppTitle;
+  /// Tiêu đề đẩy ra hệ thống thông báo thiết bị — LUÔN dùng chuỗi trung tính an toàn cho màn hình khóa.
+  String get systemNotificationTitle => lockScreenTitle;
 
-  /// Nội dung thực tế đẩy ra hệ thống thông báo thiết bị.
-  String get systemNotificationBody =>
-      hideDetailsOnLockScreen ? lockScreenBody : inAppBody;
+  /// Nội dung đẩy ra hệ thống thông báo thiết bị — LUÔN dùng chuỗi trung tính an toàn cho màn hình khóa,
+  /// không bao giờ đẩy chi tiết sức khỏe hoặc tên hoạt động nhạy cảm ra thanh thông báo / màn hình khóa.
+  String get systemNotificationBody => lockScreenBody;
 
   /// Dấu vân tay cấu hình để đối chiếu tránh đặt lại thừa khi không có thay đổi.
   String get scheduleFingerprint =>

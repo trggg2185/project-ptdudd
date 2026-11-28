@@ -74,6 +74,12 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const Key('lock_screen_preview_box')), findsOneWidget);
+      // Không có công tắc cho phép chuyển thông báo màn hình khóa sang public
+      expect(find.byKey(const Key('lock_screen_privacy_switch')), findsNothing);
+      expect(
+        find.byKey(const Key('lock_screen_privacy_policy_tile')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('hiển thị cảnh báo khi quyền thông báo bị tắt và cho cấp lại quyền mượt mà', (
@@ -271,6 +277,39 @@ void main() {
 
       expect(gateway.scheduledReminders, isEmpty);
       expect((await repo.getDeviceTokens('user-notif-a')).single.isActive, isFalse);
+
+      // Chuyển trực tiếp tài khoản A → B qua luồng Auth (không bấm nút đăng xuất) -> hủy nhắc & vô hiệu hóa token của A
+      await repo.registerDeviceToken(
+        ownerUid: 'user-notif-a',
+        token: 'tok-a',
+        platform: 'android',
+      );
+      await repo.registerDeviceToken(
+        ownerUid: 'user-notif-b',
+        token: 'tok-b',
+        platform: 'android',
+      );
+      auth.changes.add(const AuthSession(uid: 'user-notif-a'));
+      await tester.pumpAndSettle();
+      await tester.tap(openBtn);
+      await tester.pumpAndSettle();
+      expect(gateway.scheduledReminders, hasLength(3));
+
+      auth.changes.add(const AuthSession(uid: 'user-notif-b'));
+      await tester.pumpAndSettle();
+      expect(gateway.scheduledReminders, isEmpty);
+      expect((await repo.getDeviceTokens('user-notif-a')).single.isActive, isFalse);
+      expect((await repo.getDeviceTokens('user-notif-b')).single.isActive, isTrue);
+
+      // Đăng xuất Firebase từ bên ngoài (luồng phát null cho user-notif-b) -> vô hiệu hóa token của B
+      await tester.tap(openBtn);
+      await tester.pumpAndSettle();
+      expect(gateway.scheduledReminders, hasLength(3));
+
+      auth.changes.add(null);
+      await tester.pumpAndSettle();
+      expect(gateway.scheduledReminders, isEmpty);
+      expect((await repo.getDeviceTokens('user-notif-b')).single.isActive, isFalse);
 
       // Kiểm tra khởi chạy độc lập qua HealthyLifeApp và fallback offline
       expect(resolveNotificationRepository(), isA<InMemoryNotificationRepository>());

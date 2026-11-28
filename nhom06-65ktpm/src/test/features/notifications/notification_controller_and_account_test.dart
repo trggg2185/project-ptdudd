@@ -70,6 +70,87 @@ void main() {
       expect(tokensB.single.isActive, isTrue);
     });
 
+    test('chuyển tài khoản trực tiếp (A → B) và đăng xuất Firebase bên ngoài (A → null) đều hủy nhắc cục bộ và vô hiệu hóa device_tokens tài khoản cũ', () async {
+      final repo = InMemoryNotificationRepository(
+        seedWithSamples: true,
+        referenceDate: fixedNow,
+      );
+      final gateway = InMemoryLocalNotificationGateway(
+        permissionStatus: NotificationPermissionStatus.granted,
+      );
+      final coordinator = NotificationAccountCoordinator(
+        gateway: gateway,
+        repositoryResolver: () => repo,
+      );
+
+      // 1. Chuyển trực tiếp tài khoản A → B không qua nút đăng xuất
+      await repo.registerDeviceToken(
+        ownerUid: 'user-a',
+        token: 'fcm-token-a',
+        platform: 'android',
+      );
+      await repo.registerDeviceToken(
+        ownerUid: 'user-b',
+        token: 'fcm-token-b',
+        platform: 'android',
+      );
+      final controllerA = NotificationController(
+        repository: repo,
+        gateway: gateway,
+        currentUserId: 'user-a',
+        accountCoordinator: coordinator,
+        nowProvider: () => fixedNow,
+      );
+      addTearDown(controllerA.dispose);
+      await controllerA.loadAll();
+      expect(gateway.scheduledReminders, hasLength(3));
+
+      await coordinator.handleAccountChanged(
+        previousUid: 'user-a',
+        nextUid: 'user-b',
+      );
+      expect(gateway.scheduledReminders, isEmpty);
+      expect((await repo.getDeviceTokens('user-a')).single.isActive, isFalse);
+      expect((await repo.getDeviceTokens('user-b')).single.isActive, isTrue);
+
+      // 2. Đăng nhập tài khoản B rồi bị đăng xuất Firebase từ bên ngoài (B → null)
+      final controllerB = NotificationController(
+        repository: repo,
+        gateway: gateway,
+        currentUserId: 'user-b',
+        accountCoordinator: coordinator,
+        nowProvider: () => fixedNow,
+      );
+      addTearDown(controllerB.dispose);
+      await controllerB.loadAll();
+      expect(gateway.scheduledReminders, hasLength(3));
+
+      await coordinator.handleAccountChanged(
+        previousUid: 'user-b',
+        nextUid: null,
+      );
+      expect(gateway.scheduledReminders, isEmpty);
+      expect((await repo.getDeviceTokens('user-b')).single.isActive, isFalse);
+
+      // 3. Tài khoản A đăng nhập lại, kích hoạt lại token rồi lại đăng xuất bên ngoài -> vẫn vô hiệu hóa lại đúng
+      await coordinator.handleAccountChanged(
+        previousUid: null,
+        nextUid: 'user-a',
+      );
+      await repo.registerDeviceToken(
+        ownerUid: 'user-a',
+        token: 'fcm-token-a',
+        platform: 'android',
+      );
+      expect((await repo.getDeviceTokens('user-a')).single.isActive, isTrue);
+
+      await coordinator.handleAccountChanged(
+        previousUid: 'user-a',
+        nextUid: null,
+      );
+      expect((await repo.getDeviceTokens('user-a')).single.isActive, isFalse);
+    });
+
     test('khôi phục nhắc lịch sau khi thiết bị khởi động lại (simulateDeviceReboot)', () async {
       final repo = InMemoryNotificationRepository(
         seedWithSamples: true,

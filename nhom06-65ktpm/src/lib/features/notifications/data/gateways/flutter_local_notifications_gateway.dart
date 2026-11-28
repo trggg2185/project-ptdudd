@@ -194,16 +194,15 @@ class FlutterLocalNotificationsGateway implements LocalNotificationGateway {
   }
 
   NotificationDetails _buildNotificationDetails(ScheduledReminder reminder) {
-    return NotificationDetails(
+    return const NotificationDetails(
       android: AndroidNotificationDetails(
         channelId,
         channelName,
         channelDescription: channelDescription,
         importance: Importance.high,
         priority: Priority.high,
-        visibility: reminder.hideDetailsOnLockScreen
-            ? NotificationVisibility.private
-            : NotificationVisibility.public,
+        // Luôn đặt chế độ private để màn hình khóa Android không bao giờ lộ thông tin sức khỏe.
+        visibility: NotificationVisibility.private,
         category: AndroidNotificationCategory.reminder,
       ),
     );

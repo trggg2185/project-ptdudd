@@ -369,19 +369,15 @@ class _NotificationsPageState extends State<NotificationsPage>
                         },
                 ),
                 const Divider(),
-                SwitchListTile(
-                  key: const Key('lock_screen_privacy_switch'),
+                const ListTile(
+                  key: Key('lock_screen_privacy_policy_tile'),
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Ẩn chi tiết sức khỏe trên màn hình khóa'),
-                  subtitle: const Text(
-                    'Mặc định bật: thông báo ngoài màn hình khóa chỉ hiển thị nội dung trung tính.',
+                  leading: Icon(Icons.lock_outline),
+                  title: Text('Quyền riêng tư màn hình khóa (luôn bật)'),
+                  subtitle: Text(
+                    'Thông báo hệ thống luôn ở chế độ riêng tư (VISIBILITY_PRIVATE) với nội dung trung tính, '
+                    'không cho phép chuyển sang công khai để màn hình khóa tuyệt đối không lộ thông tin sức khỏe.',
                   ),
-                  value: prefs.hideHealthDetailsOnLockScreen,
-                  onChanged: _controller.isMutating
-                      ? null
-                      : (value) => _controller.updatePreferences(
-                          prefs.copyWith(hideHealthDetailsOnLockScreen: value),
-                        ),
                 ),
                 const SizedBox(height: 8),
                 Container(

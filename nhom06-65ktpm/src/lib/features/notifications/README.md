@@ -17,9 +17,9 @@ Phụ trách: Phương Văn Đức (`@pvduc05`) — Review chéo: Hàn Hoàng H�
   - **Đổi múi giờ:** phát hiện lệch múi giờ thiết bị và khi đổi múi giờ IANA trong cấu hình sẽ tự động hủy toàn bộ nhắc cũ và đặt lại toàn bộ theo múi giờ mới.
   - **Khởi động lại thiết bị:** khai báo `RECEIVE_BOOT_COMPLETED`, `ScheduledNotificationReceiver`, `ScheduledNotificationBootReceiver` trong `AndroidManifest.xml`, kèm cơ chế tự đối chiếu khôi phục (`refreshOnAppResumed`) khi mở lại ứng dụng nếu OEM chặn chạy nền.
   - **Tắt quyền thông báo:** không crash; hiển thị biểu ngữ hướng dẫn cấp quyền (`POST_NOTIFICATIONS` trên Android 13+) và vẫn giữ danh sách lịch trong app hoạt động bình thường.
-  - **Đăng xuất / đổi tài khoản Firebase:** `NotificationAccountCoordinator` nối trực tiếp vào `AuthGate` (`onBeforeSignOut`, `onAccountChanged`) để lập tức hủy toàn bộ thông báo cục bộ đang chờ, xóa bộ nhớ chống trùng/snooze của tài khoản cũ và vô hiệu hóa (`is_active = false`) các `device_tokens` của tài khoản cũ trên Supabase.
-- **Màn hình khóa không lộ thông tin sức khỏe:**
-  - `NotificationPrivacyFormatter` mặc định phát nội dung trung tính (*"HealthyLife — Bạn có một hoạt động theo lịch đã duyệt. Mở ứng dụng để xem chi tiết."*) kết hợp `NotificationVisibility.private` trên Android.
+  - **Đăng xuất / đổi tài khoản Firebase:** `NotificationAccountCoordinator` nối trực tiếp vào `AuthGate` (`onBeforeSignOut`, `onAccountChanged`) để lập tức hủy toàn bộ thông báo cục bộ đang chờ, xóa bộ nhớ chống trùng/snooze và vô hiệu hóa (`is_active = false`) các `device_tokens` của tài khoản cũ trong mọi trường hợp (bấm đăng xuất, đổi tài khoản `A → B`, hoặc đăng xuất Firebase từ bên ngoài).
+- **Màn hình khóa tuyệt đối không lộ thông tin sức khỏe:**
+  - `ScheduledReminder` và `FlutterLocalNotificationsGateway` luôn khóa cứng ở chế độ `NotificationVisibility.private` và chỉ đẩy nội dung trung tính từ `NotificationPrivacyFormatter` (*"HealthyLife — Bạn có một hoạt động theo lịch đã duyệt. Mở ứng dụng để xem chi tiết."*) ra hệ thống thông báo — không cung cấp tùy chọn chuyển sang `public`.
   - Bộ lọc kiểm tra nhạy cảm chặn các chỉ số cơ thể (`kg`, `BMI`, `kcal`), dị ứng, bệnh lý, thuốc và tọa độ GPS không lọt ra thông báo công khai hay payload.
 
 ## Ánh xạ bảng Supabase

@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import '../../../../core/local_database.dart';
 import '../../domain/entities/meal_log.dart';
-import '../../domain/entities/meal_photo_attachment.dart';
 import '../../domain/repositories/meal_log_repository.dart';
 
 /// Repository lưu nhật ký bữa ăn ngoại tuyến trên SQLite dùng chung [LocalDatabase] (Issue #7)
@@ -28,24 +27,17 @@ class LocalDatabaseMealLogRepository implements MealLogRepository {
           jsonDecode(row['payload_json']! as String) as Map<String, dynamic>;
       final updatedAtRaw = row['updated_at']! as String;
       final serverVersion = row['server_version'] as int?;
-      final imagePath = payload['image_path'] as String?;
-      final consumedAtRaw = payload['consumed_at'] as String? ?? updatedAtRaw;
-      return MealLog(
-        id: row['record_id']! as String,
-        ownerUid: row['owner_uid']! as String,
-        mealId: payload['meal_id'] as String?,
-        mealName: payload['meal_name'] as String? ?? '',
-        userConfirmedName: true,
-        consumedAt: DateTime.parse(consumedAtRaw),
-        imagePath: imagePath,
-        photoUploadStatus: imagePath != null && imagePath.isNotEmpty
-            ? MealPhotoUploadStatus.uploaded
-            : MealPhotoUploadStatus.none,
-        note: payload['note'] as String?,
-        createdAt: DateTime.parse(consumedAtRaw),
-        updatedAt: DateTime.parse(updatedAtRaw),
-        version: serverVersion ?? 1,
-      );
+      final consumedAt = payload['consumed_at'] as String? ?? updatedAtRaw;
+      return MealLog.fromMap({
+        ...payload,
+        'id': row['record_id'],
+        'owner_uid': row['owner_uid'],
+        'meal_name': payload['meal_name'] ?? '',
+        'consumed_at': consumedAt,
+        'created_at': payload['created_at'] ?? consumedAt,
+        'updated_at': updatedAtRaw,
+        'version': serverVersion ?? 1,
+      });
     }).toList();
 
     logs.sort((a, b) => b.consumedAt.compareTo(a.consumedAt));
@@ -58,7 +50,7 @@ class LocalDatabaseMealLogRepository implements MealLogRepository {
       ownerUid: log.ownerUid,
       entityType: entityType,
       recordId: log.id,
-      payload: log.toSupabasePayload(),
+      payload: {...log.toMap(), ...log.toSupabasePayload()},
     );
     return log;
   }

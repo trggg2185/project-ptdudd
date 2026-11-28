@@ -13,15 +13,22 @@ class SupabaseProfileRepository implements ProfileRepository {
   final SupabaseClient _client;
   final String _ownerUid;
   static const _preferenceKey = 'healthylife_profile';
+  ({int? start, int? end})? _loadedSleepWindow;
 
-  @override
-  Future<ProfileData> load() async {
+  Future<HealthProfile> loadProfile() async {
     final row = await _client
         .from('profiles')
         .select()
         .eq('owner_uid', _ownerUid)
         .maybeSingle();
     final profile = _readProfile(row);
+    _loadedSleepWindow = (start: profile.sleepStart, end: profile.sleepEnd);
+    return profile;
+  }
+
+  @override
+  Future<ProfileData> load() async {
+    final profile = await loadProfile();
     final rows = await _client
         .from('availability_blocks')
         .select()
@@ -43,6 +50,20 @@ class SupabaseProfileRepository implements ProfileRepository {
         .eq('owner_uid', _ownerUid)
         .single();
     final otherConditions = _map(current['living_conditions']);
+    final storedPreferences = _map(otherConditions[_preferenceKey]);
+    final preferences = {...storedPreferences, ..._profilePreferences(profile)};
+    final submittedWindow = (start: profile.sleepStart, end: profile.sleepEnd);
+    if (submittedWindow == _loadedSleepWindow) {
+      for (final key in ['sleep_start', 'sleep_end']) {
+        if (storedPreferences.containsKey(key)) {
+          preferences[key] = storedPreferences[key];
+        } else {
+          preferences.remove(key);
+        }
+      }
+    } else if (profile.sleepStart == null || profile.sleepEnd == null) {
+      preferences.remove('sleep_label');
+    }
     final written = await _client
         .from('profiles')
         .update({
@@ -51,7 +72,7 @@ class SupabaseProfileRepository implements ProfileRepository {
           'occupation': profile.occupation,
           'living_conditions': {
             ...otherConditions,
-            _preferenceKey: _profilePreferences(profile),
+            _preferenceKey: preferences,
           },
         })
         .eq('owner_uid', _ownerUid)
@@ -59,6 +80,7 @@ class SupabaseProfileRepository implements ProfileRepository {
         .select('owner_uid')
         .maybeSingle();
     if (written == null) throw StateError('Profile changed while saving');
+    _loadedSleepWindow = submittedWindow;
   }
 
   @override
@@ -119,7 +141,10 @@ class SupabaseProfileRepository implements ProfileRepository {
       adultConfirmed: stored['adult_confirmed'] == true,
       requiresProfessionalGuidance: stored['requires_guidance'] == true,
       timeZone:
-          (stored.isEmpty ? (row?['timezone']) : stored['timezone']) as String?,
+          (stored.containsKey('timezone')
+                  ? stored['timezone']
+                  : row?['timezone'])
+              as String?,
       occupation: row?['occupation'] as String?,
       goal: ProfileGoal.fromCode(stored['goal']),
       activityLevel: _enumValue(ActivityLevel.values, stored['activity_level']),
@@ -171,14 +196,18 @@ class SupabaseProfileRepository implements ProfileRepository {
     final raw = row['recurrence_rule'] as String?;
     Map<String, dynamic> metadata = const {};
     if (raw != null && raw.trimLeft().startsWith('{')) {
-      metadata = _map(jsonDecode(raw));
+      try {
+        metadata = _map(jsonDecode(raw));
+      } on FormatException {
+        // Rows created before structured recurrence can still be shown once.
+      }
     }
     final blockZone = metadata['timezone'] as String? ?? preferredZone;
     return ScheduleBlock(
       id: row['id'] as String,
       kind:
           _enumValue(ScheduleKind.values, metadata['kind']) ??
-          ScheduleKind.busy,
+          (metadata['kind'] == 'shift' ? ScheduleKind.work : ScheduleKind.busy),
       title: row['title'] as String? ?? 'Khoảng bận',
       timeZone: profileLocation(blockZone) == null
           ? defaultProfileZone

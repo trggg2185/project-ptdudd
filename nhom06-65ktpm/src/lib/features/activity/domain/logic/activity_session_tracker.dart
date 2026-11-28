@@ -41,6 +41,8 @@ class ActivitySessionTracker {
     _skipNextSegmentDistance = true;
   }
 
+  void breakSegment() => _skipNextSegmentDistance = true;
+
   GpsPoint? addPoint(GpsPoint point) {
     if (status != ActivityStatus.recording) return null;
     final accuracy = point.accuracyMeters;

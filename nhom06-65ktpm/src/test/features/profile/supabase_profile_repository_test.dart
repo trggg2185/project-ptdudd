@@ -5,6 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:healthylife/features/profile/data/supabase_profile_repository.dart';
 import 'package:healthylife/features/profile/domain/health_profile.dart';
 import 'package:healthylife/features/profile/domain/schedule_block.dart';
+import 'package:healthylife/features/sleep/data/repositories/supabase_sleep_repository.dart';
+import 'package:healthylife/features/sleep/domain/entities/routine_block.dart';
+import 'package:healthylife/features/sleep/domain/logic/sleep_schedule_analyzer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
@@ -27,7 +30,10 @@ void main() {
         'owner_uid': owner,
         'updated_at': '2026-11-24T10:00:00+00:00',
         'timezone': 'Asia/Ho_Chi_Minh',
-        'living_conditions': {'existing_key': 'keep'},
+        'living_conditions': {
+          'existing_key': 'keep',
+          'healthylife_profile': {'future_key': 'keep'},
+        },
       };
       Map<String, dynamic>? slot;
       server.listen((request) async {
@@ -88,6 +94,13 @@ void main() {
       expect(initial.profile.timeZone, 'Asia/Ho_Chi_Minh');
       expect(initial.profile.adultConfirmed, isFalse);
       expect(initial.blocks, isEmpty);
+      final living = row['living_conditions'] as Map<String, dynamic>;
+      living['healthylife_profile'] = {
+        'future_key': 'keep',
+        'sleep_start': 450,
+        'sleep_end': 900,
+        'sleep_label': 'Sau ca đêm',
+      };
 
       await repository.saveProfile(
         HealthProfile(
@@ -99,6 +112,22 @@ void main() {
         ),
       );
       expect(row['living_conditions']['existing_key'], 'keep');
+      expect(
+        row['living_conditions']['healthylife_profile'],
+        containsPair('future_key', 'keep'),
+      );
+      expect(
+        row['living_conditions']['healthylife_profile'],
+        containsPair('sleep_start', 450),
+      );
+      expect(
+        row['living_conditions']['healthylife_profile'],
+        containsPair('sleep_end', 900),
+      );
+      expect(
+        row['living_conditions']['healthylife_profile'],
+        containsPair('sleep_label', 'Sau ca đêm'),
+      );
       final block = ScheduleBlock.fromLocal(
         id: '3b4c3f44-8a69-4d25-9926-e27b7c946e81',
         kind: ScheduleKind.work,
@@ -124,6 +153,32 @@ void main() {
       expect(restored.localEnd.day, 25);
       expect(restored.travelMinutes, 20);
       expect(restored.occupiedTimeOn(DateTime.utc(2026, 12, 1)), isNull);
+      final routines = await SupabaseSleepRepository(client: client)
+          .getRoutineBlocks(ownerUid: owner);
+      expect(routines.single.kind, RoutineBlockKind.workShift);
+      final nextShift = DateTime.parse('2026-12-08T14:40:00Z').toLocal();
+      final intervals = routines.single
+          .intervalsForDay(
+            DateTime(nextShift.year, nextShift.month, nextShift.day),
+          )
+          .toList();
+      expect(intervals.single.start, nextShift.toUtc());
+      expect(
+        SleepScheduleAnalyzer.buildSegmentsForDate(
+          targetDate: nextShift,
+          sleepLogs: [],
+          routineBlocks: routines,
+        ).single.kind,
+        RoutineBlockKind.workShift,
+      );
+      expect(
+        SleepScheduleAnalyzer.buildSegmentsForDate(
+          targetDate: DateTime.parse('2026-12-01T15:00:00Z').toLocal(),
+          sleepLogs: [],
+          routineBlocks: routines,
+        ),
+        isEmpty,
+      );
       await repository.deleteBlock(block.id);
       expect((await repository.load()).blocks, isEmpty);
     },

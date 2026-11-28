@@ -489,12 +489,12 @@ void main() {
 
         final listScrollable = find.byType(Scrollable).first;
         await tester.scrollUntilVisible(
-          find.text('Ghi nhận nhập tay (không có ảnh)'),
+          find.text('Ảnh chưa được lưu'),
           200,
           scrollable: listScrollable,
         );
         expect(
-          find.text('Ghi nhận nhập tay (không có ảnh)'),
+          find.text('Ảnh chưa được lưu'),
           findsOneWidget,
         );
       },

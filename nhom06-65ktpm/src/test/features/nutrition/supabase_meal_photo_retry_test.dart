@@ -627,6 +627,10 @@ void main() {
         };
         expect(logsById[firstSave.log.id]!.imagePath, isNull);
         expect(
+          logsById[firstSave.log.id]!.photoUploadStatus,
+          MealPhotoUploadStatus.failed,
+        );
+        expect(
           logsById[secondSave.log.id]!.imagePath,
           'uid-a/${secondSave.log.id}.jpg',
         );
@@ -711,9 +715,10 @@ void main() {
 
         final repo = LocalDatabaseMealLogRepository(db);
         final pendingStore = LocalDatabasePendingMealPhotoStore(db);
+        var activeOwner = 'uid-a';
         final storage = SupabasePrivateMealPhotoStorage(
           client,
-          currentOwnerUid: () => 'uid-a',
+          currentOwnerUid: () => activeOwner,
         );
         final useCase = MealNutritionUseCase(
           recommendationsUseCase: const GetRecommendationsUseCase(
@@ -747,6 +752,14 @@ void main() {
           ),
         );
         expect(await useCase.countPendingPhotos(ownerUid: 'uid-a'), 2);
+
+        activeOwner = 'uid-b';
+        final reportAfterSwitch = await useCase.retryPendingPhotoUploadsDetailed(
+          ownerUid: 'uid-a',
+        );
+        expect(reportAfterSwitch.rejectedPhotos, isEmpty);
+        expect(reportAfterSwitch.remainingPendingCount, 2);
+        activeOwner = 'uid-a';
 
         // Ca 1: Storage trả 429 Too Many Requests -> giữ nguyên cả 2 ảnh, không báo bị từ chối.
         mode = '429';

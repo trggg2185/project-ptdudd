@@ -33,7 +33,12 @@ class SupabaseActivityRepository implements ActivityRepository {
           onConflict: 'owner_uid',
           ignoreDuplicates: true,
         );
-    await client.from('activity_sessions').upsert({
+    final explicitSource = switch (session.resolvedSource) {
+      ActivityInputSource.manual => 'manual',
+      ActivityInputSource.gps => 'gps',
+      ActivityInputSource.unknown => null,
+    };
+    final basePayload = <String, dynamic>{
       'id': session.id,
       'owner_uid': session.ownerUid,
       'activity_name': session.activityName,
@@ -42,34 +47,49 @@ class SupabaseActivityRepository implements ActivityRepository {
       'duration_seconds': session.durationSeconds,
       'estimated_distance_meters': session.estimatedDistanceMeters,
       'feeling': session.feeling,
-      'route_saved': session.routeSaved,
-    });
+      'route_saved': false,
+    };
+    try {
+      await client.from('activity_sessions').upsert({
+        ...basePayload,
+        'input_source': ?explicitSource,
+      });
+    } on PostgrestException catch (error) {
+      // Tương thích ngược nếu môi trường cloud chưa áp dụng migration 20261128000007.
+      final missingInputSourceColumn =
+          error.code == 'PGRST204' ||
+          error.code == '42703' ||
+          error.message.contains('input_source');
+      if (explicitSource == null || !missingInputSourceColumn) rethrow;
+      await client.from('activity_sessions').upsert(basePayload);
+    }
 
-    await client
-        .from('route_points')
-        .delete()
-        .eq('owner_uid', session.ownerUid)
-        .eq('session_id', session.id);
-
-    if (session.routeSaved && session.route.isNotEmpty) {
+    if (!session.routeSaved || session.route.isEmpty) {
       await client
           .from('route_points')
-          .insert(
-            session.route
-                .map(
-                  (point) => {
-                    'id': _uuid.v4(),
-                    'owner_uid': session.ownerUid,
-                    'session_id': session.id,
-                    'latitude': point.latitude,
-                    'longitude': point.longitude,
-                    'accuracy_meters': point.accuracyMeters,
-                    'recorded_at': point.recordedAt.toUtc().toIso8601String(),
-                  },
-                )
-                .toList(),
-          );
+          .delete()
+          .eq('owner_uid', session.ownerUid)
+          .eq('session_id', session.id);
+      return;
     }
+
+    await client.from('route_points').upsert([
+      for (final (index, point) in session.route.indexed)
+        {
+          'id': _uuid.v5(Namespace.url.value, '${session.id}:$index'),
+          'owner_uid': session.ownerUid,
+          'session_id': session.id,
+          'latitude': point.latitude,
+          'longitude': point.longitude,
+          'accuracy_meters': point.accuracyMeters,
+          'recorded_at': point.recordedAt.toUtc().toIso8601String(),
+        },
+    ]);
+    await client
+        .from('activity_sessions')
+        .update({'route_saved': true})
+        .eq('owner_uid', session.ownerUid)
+        .eq('id', session.id);
   }
 
   @override
@@ -103,19 +123,28 @@ class SupabaseActivityRepository implements ActivityRepository {
             )
             .toList();
       }
+      final rawDistance = (row['estimated_distance_meters'] as num?)?.toDouble();
+      final parsedSource = ActivitySession.parseInputSource(
+        row['input_source'],
+      );
+      final resolvedSource =
+          parsedSource ??
+          ((routeSaved || route.isNotEmpty || (rawDistance ?? 0) > 0)
+              ? ActivityInputSource.gps
+              : ActivityInputSource.unknown);
       sessions.add(
         ActivitySession(
           id: row['id'] as String,
           ownerUid: ownerUid,
           activityName: row['activity_name'] as String,
           durationSeconds: (row['duration_seconds'] as num?)?.toInt() ?? 0,
-          estimatedDistanceMeters:
-              (row['estimated_distance_meters'] as num?)?.toDouble() ?? 0,
+          estimatedDistanceMeters: rawDistance ?? 0,
           feeling: row['feeling'] as String? ?? '',
           routeSaved: routeSaved,
           startedAt: DateTime.parse(row['started_at'] as String),
           endedAt: DateTime.parse(row['ended_at'] as String),
           route: route,
+          inputSource: resolvedSource,
         ),
       );
     }

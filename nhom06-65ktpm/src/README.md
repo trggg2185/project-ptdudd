@@ -2,7 +2,7 @@
 
 ## Bắt đầu tại đây — dành cho thành viên và AI của thành viên
 
-**Bản tích hợp issue #1, #2, #4, #7, #8 và #10.** Trên Android/Web, ứng dụng đăng nhập bằng Firebase và mở màn hình **Hồ sơ và lịch**, **Thói quen** hoặc **Nhật ký vận động** khi tài khoản có quyền truy cập dữ liệu. SQLite và sync worker nằm trong `lib/core/`. Bộ gợi ý đã có danh mục mẫu, bộ lọc, xếp hạng và giao diện xem trước riêng. Việc tạo lịch tự động từ hồ sơ và kết nối hàng đợi SQLite với UI thuộc bước tích hợp tiếp theo.
+**Bản tích hợp issue #1, #2, #3, #4, #5, #6, #7, #8, #10 và #11.** Trên Android/Web, tài khoản Firebase có quyền dữ liệu có thể mở **Hồ sơ và lịch**, **Lịch tuần**, **Thói quen**, **Nhật ký ngủ**, **Nhật ký vận động**, **Nhật ký bữa ăn** và **Nhắc lịch & giờ yên lặng**. Nhật ký bữa ăn trên Android dùng SQLite và sync worker trong `lib/core/`. Lịch tuần dùng hồ sơ và danh mục gợi ý đã lọc.
 
 AI đọc [AGENTS.md](AGENTS.md) trước khi sửa mã, rồi đọc issue được giao và các phần liên quan trong README. Các mục 1–11 bên dưới là **đặc tả/kế hoạch**, không phải danh sách tính năng đã hoàn thành.
 
@@ -64,7 +64,7 @@ flutter run -d chrome --web-port=5000
 
 Android: chạy `flutter devices`, bật USB debugging nếu dùng điện thoại, rồi `flutter run -d <device-id>`. Android Studio cần JDK/SDK tương thích với cấu hình Gradle có sẵn; chạy theo chẩn đoán flutter doctor, không commit đường dẫn máy vào `android/local.properties`.
 
-**Khi chạy lần đầu**, HealthyLife hiển thị nút đăng nhập bằng Email/Password hoặc Google. Nếu Firebase đã lưu phiên trên thiết bị/trình duyệt, ứng dụng mở màn hình **Phiên đăng nhập**. Sau khi tài khoản có quyền truy cập dữ liệu, chọn **Mở hồ sơ và lịch**, **Mở thói quen** hoặc **Nhật ký vận động**. Chọn **Đăng xuất** để thử tài khoản khác. Hướng dẫn kiểm thử SQLite và sync worker nằm ở mục 4.4.
+**Khi chạy lần đầu**, HealthyLife hiển thị nút đăng nhập bằng Email/Password hoặc Google. Nếu Firebase đã lưu phiên trên thiết bị/trình duyệt, ứng dụng mở màn hình **Phiên đăng nhập**. Sau khi tài khoản có quyền truy cập dữ liệu, chọn màn hình cần dùng trên trang **Phiên đăng nhập**. Chọn **Đăng xuất** để thử tài khoản khác. Hướng dẫn kiểm thử SQLite và sync worker nằm ở mục 4.4.
 
 **Module Thói quen & Kỷ luật.** Đăng nhập bằng tài khoản có claim `role: authenticated` và chọn **Mở thói quen**. Màn hình dùng UID Firebase của phiên hiện tại để tải dữ liệu Supabase. Khi lưu thói quen đầu tiên, app tạo hàng hồ sơ tối thiểu nếu chưa có. Thay đổi lịch lặp có hiệu lực từ ngày địa phương tiếp theo. Nếu khởi tạo backend thất bại, ứng dụng hiển thị nút **Thử lại**. Các test dùng `InMemoryHabitRepository` cho demo và dữ liệu giả. Màn hình thói quen hiện cần mạng để lưu lên Supabase.
 
@@ -72,11 +72,28 @@ Android: chạy `flutter devices`, bật USB debugging nếu dùng điện tho�
 
 1. Trong **Hồ sơ**, xác nhận từ 18 tuổi, nhập múi giờ IANA (ví dụ `Asia/Ho_Chi_Minh`), mục tiêu, mức vận động, số buổi và số phút mỗi buổi. Có thể lưu hồ sơ chưa đủ điều kiện gợi ý. Khai báo công việc, môn tập, thiết bị, ngân sách, dị ứng và giờ ngủ theo nhu cầu. Khi chưa xác nhận dị ứng, đầu vào vẫn khóa gợi ý món ăn.
 2. Trong **Lịch bận**, chọn **Thêm khoảng bận** rồi chọn **Ca làm việc** nếu cần. Ví dụ ca `22:00–06:00` kết thúc hôm sau. Nhập số phút đi lại cho mỗi chiều. Có thể bật lặp mỗi tuần vào cùng thứ và chọn các ngày ngoại lệ. Chạm tên một mục để sửa.
-3. Trong **Lịch thủ công**, thêm giờ cho một hoạt động ngay cả khi hồ sơ chưa đủ điều kiện gợi ý. App lưu mục do bạn đặt giờ và hiển thị lại khi mở màn hình. Issue #3 sẽ dùng đầu vào này để xếp lịch tự động.
+3. Trong **Lịch thủ công**, thêm giờ cho một hoạt động ngay cả khi hồ sơ chưa đủ điều kiện gợi ý. App lưu mục do bạn đặt giờ và hiển thị lại khi mở màn hình. Các mục này được giữ chỗ khi tạo lịch tự động.
 
 Hồ sơ và lịch dùng các bảng `profiles` và `availability_blocks` đã triển khai. Tuỳ chọn của issue #2 nằm trong `profiles.living_conditions.healthylife_profile`. Lịch dùng UTC cho mốc thời gian và giữ múi giờ IANA, loại lịch, cờ lặp trong `recurrence_rule`. `HealthProfile.toRecommendationProfile()` cung cấp dữ liệu cho bộ gợi ý. `ScheduleBlock.occupiedTimeOn()` mở rộng kỳ lặp và cộng đi lại vào hai đầu khoảng bận.
 
 Chạy `flutter test test/features/profile` để thử xác thực đầu vào, ca đêm, ngày ngoại lệ, DST, lọc dị ứng và lưu lịch thủ công với repository giả.
+
+**Issue #3 — Lập lịch tuần.** Từ **Phiên đăng nhập** chọn **Mở lịch tuần**, hoặc dùng nút lịch ở thanh trên cùng của **Hồ sơ và lịch**.
+
+1. Chọn tuần và ngày cần xem. Ca làm, khoảng bận, đi lại, lịch thủ công trong hồ sơ và giờ ngủ mong muốn được giữ chỗ. Lịch lặp dùng múi giờ của ca đã khai báo và bỏ qua ngày ngoại lệ.
+2. Chọn **Tạo lịch nháp** để xếp các gợi ý vào khoảng trống. Mỗi ngày có tối đa một buổi tập tự động, xoay vòng giữa các bài phù hợp và giữ thời lượng từ danh mục. App báo số buổi hoặc bữa chưa xếp được. Khi hồ sơ thiếu dữ kiện, dùng **Thêm hoạt động**. Mục nhập tay được khóa khi thêm.
+3. Dùng **Chỉnh lịch**, **Đổi giờ**, **Khóa mục** hoặc **Mở khóa** rồi chọn **Duyệt lịch**. App tải lại hồ sơ để kiểm tra xung đột trước khi duyệt. Bản nháp chỉ nằm trong phiên chỉnh sửa. Danh sách để nhắc lấy các mục sắp đến từ lịch đã duyệt. Issue #6 phụ trách gửi thông báo.
+4. Khi hoạt động tới giờ, chọn **Ghi nhật ký** để mở màn hình tương ứng. Quay lại lịch để ghi **Hoàn thành** hoặc **Bỏ qua**. Sau khi bỏ qua, phần thời gian còn lại có thể dùng cho hoạt động khác. **Tổng kết tuần** hiển thị kết quả do người dùng ghi, các mục sắp đến và các mục chưa ghi nhận. Lịch đã ghi kết quả được giữ khi duyệt lần sau.
+
+Chạy `flutter test --no-pub test/features/planner test/auth_flow_test.dart` để kiểm thử luồng trên. Khi triển khai, áp dụng [migration lịch tuần](supabase/migrations/20261127000006_weekly_planner.sql) để bật lưu bản đã duyệt và ghi kết quả trên Supabase. Migration bổ sung hai RPC ghi nguyên tử, kiểm tra phiên bản và dùng RLS hiện có.
+
+**Issue #5 — Nhật ký ngủ.** Chọn **Mở nhật ký ngủ** để nhập giờ ngủ/thức và mức tỉnh táo. Lịch sinh hoạt dùng ca làm và lịch bận từ hồ sơ, kể cả lịch lặp và ngày ngoại lệ. Khoảng ngủ mong muốn được chia sẻ giữa hai màn hình. [Hướng dẫn kiểm thử nhật ký ngủ](lib/features/sleep/README.md).
+
+**Issue #6 — Nhắc lịch cục bộ & Giờ yên lặng.** Chọn **Mở nhắc lịch & giờ yên lặng** để cấu hình bật/tắt nhắc, khung giờ yên lặng (qua đêm lẫn ca đêm ban ngày), múi giờ IANA, tạm hoãn (snooze) và luôn khóa thông báo màn hình khóa ở chế độ riêng tư trung tính. Chỉ mục thuộc lịch đã duyệt (`approved`) mới tạo nhắc; đổi/xóa mục tự hủy nhắc cũ. Lớp điều phối toàn app (`NotificationAccountCoordinator` + `WidgetsBindingObserver` + `firebase_messaging`) tự đăng ký/xoay vòng `device_tokens`, xử lý FCM data-only ở cả **foreground, background và terminated** (`onBackgroundMessage` + chống trùng xuyên isolate qua SQLite), khôi phục nhắc sau khởi động lại máy dù chưa mở trang nhắc lịch và thu hồi token (kèm hàng đợi retry khi offline) khi đăng xuất hoặc đổi tài khoản Firebase. [Hướng dẫn kiểm thử, hợp đồng data-only FCM và giới hạn thiết bị](lib/features/notifications/README.md).
+
+**Issue #11 — Nhật ký bữa ăn.** Chọn **Mở nhật ký bữa ăn** để nhập tên món, đổi món gợi ý và đính kèm ảnh nếu muốn. Android lưu nhật ký và ảnh chờ trong SQLite. Nút **Đồng bộ nhật ký** thử gửi lại khi có kết nối. Web đọc và ghi trực tuyến. [Hướng dẫn kiểm thử nhật ký bữa ăn](lib/features/nutrition/README.md).
+
+**Issue #12 — Dashboard tổng kết tuần, kiểm thử nghiệm thu và báo cáo/demo.** Module `insights` tổng hợp tỷ lệ hoàn thành, streak xuyên tuần, thời lượng tập luyện (tách nguồn GPS và nhập tay), giấc ngủ tự ghi và nhật ký bữa ăn theo tuần; phân biệt rõ **Chưa ghi nhận** với **Không hoàn thành**, ghi rõ nguồn nhập tay/thiết bị và không gọi là *điểm sức khỏe*. Xem [Hướng dẫn module insights](lib/features/insights/README.md), [Báo cáo kiểm thử nghiệm thu](../docs/ACCEPTANCE_TEST_REPORT.md), [Minh chứng đóng góp thực tế](../docs/CONTRIBUTION_EVIDENCE.md) và [Ảnh demo Android/Web](../docs/demo/README.md). Tính năng mở rộng AI/Health Connect chưa triển khai vì các phần cốt lõi (`#3`, `#6`, `#9`, 2 migration cloud và nghiệm thu điện thoại Android thật) chưa hoàn tất toàn bộ.
 
 **Module Nhật ký vận động và GPS (Issue #8):** mở từ nút “Nhật ký vận động” sau đăng nhập khi tài khoản có claim `role: authenticated`. Chọn môn, nhập cảm nhận, dùng `Start/Pause/Resume/Stop` để ghi phiên GPS; khi ứng dụng ra nền, luồng ghi GPS tự tạm dừng. Điểm có độ chính xác lớn hơn 30 mét hoặc trùng gần nhau được bỏ qua, quãng đường được tính bằng Haversine và thời gian Pause không cộng vào thời lượng. Khi không có vị trí hoặc người dùng từ chối quyền, phần nhập thủ công vẫn lưu thời lượng. Tuyến đường chỉ được lưu khi bật “Lưu tuyến đường”. Bản demo dùng `InMemoryActivityRepository`; `SupabaseActivityRepository` ghi `activity_sessions` và `route_points` đã khai báo trong migration.
 
@@ -134,7 +151,10 @@ Khi cấp quyền thử, kiểm tra Firebase Project ID và UID của tài kho�
    1. [Schema, RLS và bucket](supabase/migrations/20261121_000001_initial_healthy_life_schema.sql)
    2. [RPC và xử lý xung đột](supabase/migrations/20261122_000002_log_sync_conflicts.sql)
    3. [Dữ liệu danh mục và kiểm tra UID khi đồng bộ](supabase/migrations/20261123_000003_catalog_and_sync_integration.sql)
-   4. [Seed 10 môn tập và 10 món ăn](supabase/seed/20261121_initial_catalog.sql)
+   4. [Giới hạn dung lượng và MIME của ảnh bữa ăn](supabase/migrations/20261125000004_meal_images_bucket_limits.sql)
+   5. [Ràng buộc nhật ký ngủ và RPC khoảng ngủ mong muốn](supabase/migrations/20261125000005_sleep_constraints_and_window_merge.sql)
+   6. [Duyệt lịch tuần và lưu kết quả](supabase/migrations/20261127000006_weekly_planner.sql)
+   7. [Seed 10 môn tập và 10 món ăn](supabase/seed/20261121_initial_catalog.sql)
 4. Xác nhận bucket `meal-images` ở chế độ riêng tư. Dùng hai tài khoản thử để tạo và check-in thói quen, rồi kiểm tra mỗi tài khoản chỉ thấy dữ liệu của mình. Nếu nhóm đã quản lý migrations bằng Supabase CLI, dùng lịch sử migration của nhóm để áp dụng các file còn thiếu.
 
 Kiểm tra trạng thái schema trước hoặc sau khi áp dụng bằng truy vấn chỉ đọc trong SQL Editor.
@@ -171,7 +191,7 @@ Khi nhận issue #7/#9, Hà và Trưởng kiểm tra quyền truy cập chéo A/
 
 ## 4.5. Kiểm thử quyền riêng tư và xóa dữ liệu (Issue #9)
 
-Migration `20261128_000005_privacy_export_and_delete.sql` bổ sung hai RPC:
+Migration `20261128000008_privacy_export_and_delete.sql` bổ sung hai RPC:
 
 - `export_my_data()` trả dữ liệu cloud thuộc UID đăng nhập; app sao chép JSON ra clipboard.
 - `delete_my_data()` xóa ảnh riêng tư trong bucket `meal-images` và dữ liệu có `owner_uid` của UID hiện tại.

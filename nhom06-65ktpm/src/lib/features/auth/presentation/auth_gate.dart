@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -12,17 +14,37 @@ class AuthGate extends StatefulWidget {
     required this.auth,
     this.habitsPageBuilder,
     this.sleepPageBuilder,
+    this.nutritionPageBuilder,
     this.profilePageBuilder,
+    this.plannerPageBuilder,
     this.activityPageBuilder,
     this.privacyServiceBuilder,
+    this.notificationsPageBuilder,
+    this.onSessionAuthorized,
+    this.onBeforeSignOut,
+    this.onAccountChanged,
   });
 
   final AuthRepository auth;
   final Widget Function(AuthSession)? habitsPageBuilder;
   final Widget Function(AuthSession)? sleepPageBuilder;
+  final Widget Function(AuthSession)? nutritionPageBuilder;
   final Widget Function(AuthSession)? profilePageBuilder;
+  final Widget Function(AuthSession)? plannerPageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
   final PrivacyService Function(AuthSession)? privacyServiceBuilder;
+  final Widget Function(AuthSession)? notificationsPageBuilder;
+
+  /// Hook kích hoạt điều phối toàn app khi phiên đã xác minh claim `role: authenticated`
+  /// (ví dụ đăng ký FCM token, retry thu hồi token cũ và khôi phục lịch nhắc sau boot).
+  final Future<void> Function(String ownerUid)? onSessionAuthorized;
+
+  /// Hook dọn tài nguyên tài khoản trước khi đăng xuất (ví dụ hủy nhắc lịch cục bộ và `device_tokens`).
+  final Future<void> Function(String ownerUid)? onBeforeSignOut;
+
+  /// Hook xử lý khi phiên Firebase đổi tài khoản hoặc đăng xuất từ bên ngoài.
+  final Future<void> Function(String? previousUid, String? nextUid)?
+  onAccountChanged;
 
   @override
   State<AuthGate> createState() => _AuthGateState();
@@ -30,6 +52,7 @@ class AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<AuthGate> {
   late Stream<AuthSession?> _sessions = widget.auth.sessions;
+  String? _lastObservedUid;
 
   @override
   Widget build(BuildContext context) {
@@ -63,6 +86,14 @@ class _AuthGateState extends State<AuthGate> {
         }
 
         final session = snapshot.data;
+        final nextUid = session?.uid;
+        if (nextUid != _lastObservedUid) {
+          final previousUid = _lastObservedUid;
+          _lastObservedUid = nextUid;
+          if (previousUid != null) {
+            widget.onAccountChanged?.call(previousUid, nextUid);
+          }
+        }
         return session == null
             ? SignInPage(auth: widget.auth)
             : _SessionNavigator(
@@ -71,9 +102,14 @@ class _AuthGateState extends State<AuthGate> {
                 session: session,
                 habitsPageBuilder: widget.habitsPageBuilder,
                 sleepPageBuilder: widget.sleepPageBuilder,
+                nutritionPageBuilder: widget.nutritionPageBuilder,
                 profilePageBuilder: widget.profilePageBuilder,
+                plannerPageBuilder: widget.plannerPageBuilder,
                 activityPageBuilder: widget.activityPageBuilder,
                 privacyServiceBuilder: widget.privacyServiceBuilder,
+                notificationsPageBuilder: widget.notificationsPageBuilder,
+                onSessionAuthorized: widget.onSessionAuthorized,
+                onBeforeSignOut: widget.onBeforeSignOut,
               );
       },
     );
@@ -88,18 +124,28 @@ class _SessionNavigator extends StatefulWidget {
     required this.session,
     required this.habitsPageBuilder,
     required this.sleepPageBuilder,
+    required this.nutritionPageBuilder,
     required this.profilePageBuilder,
+    required this.plannerPageBuilder,
     required this.activityPageBuilder,
     required this.privacyServiceBuilder,
+    required this.notificationsPageBuilder,
+    required this.onSessionAuthorized,
+    required this.onBeforeSignOut,
   });
 
   final AuthRepository auth;
   final AuthSession session;
   final Widget Function(AuthSession)? habitsPageBuilder;
   final Widget Function(AuthSession)? sleepPageBuilder;
+  final Widget Function(AuthSession)? nutritionPageBuilder;
   final Widget Function(AuthSession)? profilePageBuilder;
+  final Widget Function(AuthSession)? plannerPageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
   final PrivacyService Function(AuthSession)? privacyServiceBuilder;
+  final Widget Function(AuthSession)? notificationsPageBuilder;
+  final Future<void> Function(String ownerUid)? onSessionAuthorized;
+  final Future<void> Function(String ownerUid)? onBeforeSignOut;
 
   @override
   State<_SessionNavigator> createState() => _SessionNavigatorState();
@@ -120,9 +166,14 @@ class _SessionNavigatorState extends State<_SessionNavigator> {
             session: widget.session,
             habitsPageBuilder: widget.habitsPageBuilder,
             sleepPageBuilder: widget.sleepPageBuilder,
+            nutritionPageBuilder: widget.nutritionPageBuilder,
             profilePageBuilder: widget.profilePageBuilder,
+            plannerPageBuilder: widget.plannerPageBuilder,
             activityPageBuilder: widget.activityPageBuilder,
             privacyServiceBuilder: widget.privacyServiceBuilder,
+            notificationsPageBuilder: widget.notificationsPageBuilder,
+            onSessionAuthorized: widget.onSessionAuthorized,
+            onBeforeSignOut: widget.onBeforeSignOut,
           ),
         ),
       ),
@@ -136,18 +187,28 @@ class _SessionPage extends StatefulWidget {
     required this.session,
     required this.habitsPageBuilder,
     required this.sleepPageBuilder,
+    required this.nutritionPageBuilder,
     required this.profilePageBuilder,
+    required this.plannerPageBuilder,
     required this.activityPageBuilder,
     required this.privacyServiceBuilder,
+    required this.notificationsPageBuilder,
+    required this.onSessionAuthorized,
+    required this.onBeforeSignOut,
   });
 
   final AuthRepository auth;
   final AuthSession session;
   final Widget Function(AuthSession)? habitsPageBuilder;
   final Widget Function(AuthSession)? sleepPageBuilder;
+  final Widget Function(AuthSession)? nutritionPageBuilder;
   final Widget Function(AuthSession)? profilePageBuilder;
+  final Widget Function(AuthSession)? plannerPageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
   final PrivacyService Function(AuthSession)? privacyServiceBuilder;
+  final Widget Function(AuthSession)? notificationsPageBuilder;
+  final Future<void> Function(String ownerUid)? onSessionAuthorized;
+  final Future<void> Function(String ownerUid)? onBeforeSignOut;
 
   @override
   State<_SessionPage> createState() => _SessionPageState();
@@ -157,6 +218,7 @@ class _SessionPageState extends State<_SessionPage> {
   late Future<({bool allowed, String message})> _dataAccess = _checkAccess();
   bool _signingOut = false;
   bool _privacyBusy = false;
+  bool _privacyAllowed = false;
   String? _signOutError;
   String? _privacyMessage;
 
@@ -167,6 +229,13 @@ class _SessionPageState extends State<_SessionPage> {
       _signOutError = null;
     });
     try {
+      if (widget.onBeforeSignOut case final cleanup?) {
+        try {
+          await cleanup(widget.session.uid);
+        } catch (_) {
+          // Không để lỗi dọn thông báo/token chặn thao tác đăng xuất.
+        }
+      }
       await widget.auth.signOut();
     } catch (error) {
       if (mounted) setState(() => _signOutError = authErrorMessage(error));
@@ -232,8 +301,10 @@ class _SessionPageState extends State<_SessionPage> {
       _privacyBusy = true;
       _privacyMessage = null;
     });
+    var cloudDeleted = false;
     try {
       await builder(widget.session).deleteMyData();
+      cloudDeleted = true;
       await widget.auth.deleteAccount();
       if (mounted) {
         setState(() => _privacyMessage = 'Đã xóa dữ liệu và tài khoản.');
@@ -243,8 +314,9 @@ class _SessionPageState extends State<_SessionPage> {
     } catch (error) {
       if (mounted) {
         setState(
-          () => _privacyMessage =
-              'Dữ liệu cloud đã được yêu cầu xóa; ${authErrorMessage(error)}',
+          () => _privacyMessage = cloudDeleted
+              ? 'Dữ liệu cloud đã được xóa, nhưng tài khoản chưa xóa: ${authErrorMessage(error)}'
+              : authErrorMessage(error),
         );
       }
     } finally {
@@ -255,11 +327,26 @@ class _SessionPageState extends State<_SessionPage> {
   Future<({bool allowed, String message})> _checkAccess() async {
     try {
       final allowed = await widget.auth.hasDataAccess(refresh: true);
+      if (mounted) {
+        setState(() => _privacyAllowed = allowed);
+      }
+      if (allowed && mounted) {
+        if (widget.onSessionAuthorized case final activate?) {
+          unawaited(
+            activate(widget.session.uid).catchError((Object _) {
+              // Không làm gián đoạn luồng xác minh quyền nếu đồng bộ nền tạm lỗi.
+            }),
+          );
+        }
+      }
       return (
         allowed: allowed,
         message: allowed ? 'Tài khoản đã được cấp quyền truy cập dữ liệu.' : 'Tài khoản đang chờ quyền truy cập dữ liệu. Liên hệ nhóm trưởng để cấp quyền, rồi kiểm tra lại.',
       );
     } catch (error) {
+      if (mounted) {
+        setState(() => _privacyAllowed = false);
+      }
       return (allowed: false, message: authErrorMessage(error));
     }
   }
@@ -310,9 +397,13 @@ class _SessionPageState extends State<_SessionPage> {
                         ),
                         for (final entry in {
                           'Mở hồ sơ và lịch': widget.profilePageBuilder,
+                          'Mở lịch tuần': widget.plannerPageBuilder,
                           'Mở thói quen': widget.habitsPageBuilder,
                           'Mở nhật ký ngủ': widget.sleepPageBuilder,
                           'Nhật ký vận động': widget.activityPageBuilder,
+                          'Mở nhật ký bữa ăn': widget.nutritionPageBuilder,
+                          'Mở nhắc lịch & giờ yên lặng':
+                              widget.notificationsPageBuilder,
                         }.entries)
                           if (entry.value case final buildPage?)
                             FilledButton(
@@ -338,13 +429,17 @@ class _SessionPageState extends State<_SessionPage> {
                   if (widget.privacyServiceBuilder != null) ...[
                     const SizedBox(height: 24),
                     OutlinedButton(
-                      onPressed: _privacyBusy ? null : _exportData,
+                      onPressed: _privacyBusy || !_privacyAllowed
+                          ? null
+                          : _exportData,
                       child: Text(
                         _privacyBusy ? 'Đang xử lý…' : 'Xuất dữ liệu của tôi',
                       ),
                     ),
                     OutlinedButton(
-                      onPressed: _privacyBusy ? null : _deleteData,
+                      onPressed: _privacyBusy || !_privacyAllowed
+                          ? null
+                          : _deleteData,
                       child: const Text('Xóa tài khoản và dữ liệu'),
                     ),
                     if (_privacyMessage case final message?)

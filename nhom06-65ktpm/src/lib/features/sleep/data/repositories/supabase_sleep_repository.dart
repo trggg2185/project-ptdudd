@@ -1,10 +1,10 @@
-import 'dart:convert';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/local_sync_worker.dart';
 import '../../../../core/utils/id_generator.dart';
+import '../../../profile/data/supabase_profile_repository.dart';
+import '../../../profile/domain/schedule_block.dart';
 import '../../domain/entities/routine_block.dart';
 import '../../domain/entities/sleep_log.dart';
 import '../../domain/entities/sleep_window.dart';
@@ -33,10 +33,10 @@ class SupabaseSleepRepository implements SleepRepository {
     SyncTransport? syncTransport,
     String? Function()? currentOwnerUid,
     String Function()? operationIdGenerator,
-  })  : _client = client ?? _tryDefaultClient(),
-        _injectedTransport = syncTransport,
-        _currentOwnerUid = currentOwnerUid ?? _defaultFirebaseUid,
-        _operationIdGenerator = operationIdGenerator ?? IdGenerator.generateUuid;
+  }) : _client = client ?? _tryDefaultClient(),
+       _injectedTransport = syncTransport,
+       _currentOwnerUid = currentOwnerUid ?? _defaultFirebaseUid,
+       _operationIdGenerator = operationIdGenerator ?? IdGenerator.generateUuid;
 
   static SupabaseClient? _tryDefaultClient() {
     try {
@@ -71,11 +71,13 @@ class SupabaseSleepRepository implements SleepRepository {
   }
 
   Future<void> _ensureProfileRow(SupabaseClient client, String ownerUid) async {
-    await client.from('profiles').upsert(
-      {'owner_uid': ownerUid},
-      onConflict: 'owner_uid',
-      ignoreDuplicates: true,
-    );
+    await client
+        .from('profiles')
+        .upsert(
+          {'owner_uid': ownerUid},
+          onConflict: 'owner_uid',
+          ignoreDuplicates: true,
+        );
   }
 
   @override
@@ -97,9 +99,8 @@ class SupabaseSleepRepository implements SleepRepository {
       final response = await query.order('slept_at', ascending: false);
       return (response as List)
           .map(
-            (row) => SleepLog.fromSupabaseMap(
-              Map<String, dynamic>.from(row as Map),
-            ),
+            (row) =>
+                SleepLog.fromSupabaseMap(Map<String, dynamic>.from(row as Map)),
           )
           .toList();
     } catch (error) {
@@ -136,7 +137,7 @@ class SupabaseSleepRepository implements SleepRepository {
           deletedOnServer
               ? 'Bản ghi giấc ngủ đã bị xóa trên thiết bị khác. Danh sách đã được cập nhật.'
               : 'Bản ghi giấc ngủ đã bị thay đổi trên thiết bị khác. '
-                  'Vui lòng tải lại dữ liệu trước khi chỉnh sửa để tránh ghi đè.',
+                    'Vui lòng tải lại dữ liệu trước khi chỉnh sửa để tránh ghi đè.',
           serverVersion: result.serverVersion,
           serverLog: serverLog,
         );
@@ -152,7 +153,9 @@ class SupabaseSleepRepository implements SleepRepository {
           Map<String, dynamic>.from(result.serverRecord!),
         );
       }
-      return log.copyWith(version: result.serverVersion ?? (baseVersion ?? 0) + 1);
+      return log.copyWith(
+        version: result.serverVersion ?? (baseVersion ?? 0) + 1,
+      );
     } on SleepSyncException {
       rethrow;
     } on SyncTransportException catch (error) {
@@ -198,7 +201,7 @@ class SupabaseSleepRepository implements SleepRepository {
           deletedOnServer
               ? 'Bản ghi giấc ngủ đã bị xóa ở thiết bị khác trước đó.'
               : 'Bản ghi giấc ngủ đã thay đổi ở thiết bị khác trước khi xóa. '
-                  'Vui lòng tải lại dữ liệu.',
+                    'Vui lòng tải lại dữ liệu.',
           serverVersion: result.serverVersion,
           serverLog: serverLog,
         );
@@ -304,11 +307,17 @@ class SupabaseSleepRepository implements SleepRepository {
             .maybeSingle();
         if (current == null) {
           if (window == null) return;
-          throw const SleepSyncException('Không tìm thấy hồ sơ để cập nhật khoảng ngủ.');
+          throw const SleepSyncException(
+            'Không tìm thấy hồ sơ để cập nhật khoảng ngủ.',
+          );
         }
 
-        final living = Map<String, dynamic>.from(_asMap(current['living_conditions']));
-        final prefs = Map<String, dynamic>.from(_asMap(living[_profilePreferenceKey]));
+        final living = Map<String, dynamic>.from(
+          _asMap(current['living_conditions']),
+        );
+        final prefs = Map<String, dynamic>.from(
+          _asMap(living[_profilePreferenceKey]),
+        );
         if (window == null) {
           prefs
             ..remove('sleep_start')
@@ -359,24 +368,12 @@ class SupabaseSleepRepository implements SleepRepository {
   }) async {
     final client = _requireClient();
     try {
-      final rows = await client
-          .from('availability_blocks')
-          .select()
-          .eq('owner_uid', ownerUid)
-          .order('start_at');
-
-      return (rows as List).map((raw) {
-        final row = Map<String, dynamic>.from(raw as Map);
-        final kind = _parseRoutineKind(row['recurrence_rule'] as String?);
-        return RoutineBlock(
-          id: row['id'] as String,
-          title: row['title'] as String? ?? 'Khoảng bận',
-          kind: kind,
-          startsAt: DateTime.parse(row['start_at'] as String).toLocal(),
-          endsAt: DateTime.parse(row['end_at'] as String).toLocal(),
-          travelMinutes: row['travel_minutes'] as int? ?? 0,
-        );
-      }).toList();
+      final data = await SupabaseProfileRepository(client, ownerUid).load();
+      return [
+        for (final block in data.blocks)
+          if (block.kind != ScheduleKind.manual)
+            RoutineBlock.fromScheduleBlock(block),
+      ];
     } catch (error) {
       throw SleepSyncException(
         'Không thể tải lịch sinh hoạt từ Supabase.',
@@ -396,20 +393,6 @@ class SupabaseSleepRepository implements SleepRepository {
       default:
         return '$prefix ($code).';
     }
-  }
-
-  static RoutineBlockKind _parseRoutineKind(String? recurrenceRule) {
-    if (recurrenceRule != null && recurrenceRule.trimLeft().startsWith('{')) {
-      try {
-        final decoded = jsonDecode(recurrenceRule);
-        if (decoded is Map && decoded['kind'] == 'shift') {
-          return RoutineBlockKind.workShift;
-        }
-      } catch (_) {
-        // Bỏ qua nếu không phải JSON
-      }
-    }
-    return RoutineBlockKind.busy;
   }
 
   static Map<String, dynamic> _asMap(Object? value) {

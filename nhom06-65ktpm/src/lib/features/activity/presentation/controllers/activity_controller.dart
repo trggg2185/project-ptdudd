@@ -19,11 +19,23 @@ class ActivityController extends ChangeNotifier {
   bool isLoading = false;
   String? errorMessage;
   String gpsStatus = 'GPS chưa bắt đầu';
+  bool _disposed = false;
+  String? _gpsSessionId;
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   Future<void> loadSessions() async {
     isLoading = true;
     errorMessage = null;
-    notifyListeners();
+    _notify();
     try {
       sessions
         ..clear()
@@ -32,13 +44,13 @@ class ActivityController extends ChangeNotifier {
       errorMessage = 'Không thể tải nhật ký vận động: $error';
     } finally {
       isLoading = false;
-      notifyListeners();
+      _notify();
     }
   }
 
   void setActivityName(String value) {
     activityName = value;
-    notifyListeners();
+    _notify();
   }
 
   void setFeeling(String value) {
@@ -47,47 +59,49 @@ class ActivityController extends ChangeNotifier {
 
   void setRouteSaved(bool value) {
     routeSaved = value;
-    notifyListeners();
+    _notify();
   }
 
   void setGpsStatus(String value) {
     gpsStatus = value;
-    notifyListeners();
+    _notify();
   }
 
   void startGps(DateTime now) {
     routeSaved = false;
+    _gpsSessionId = const Uuid().v4();
     tracker.start(now);
     gpsStatus = 'Đang ghi GPS';
     errorMessage = null;
-    notifyListeners();
+    _notify();
   }
 
   void pauseGps(DateTime now) {
     tracker.pause(now);
     gpsStatus = 'GPS đã tạm dừng';
-    notifyListeners();
+    _notify();
   }
 
   void resumeGps(DateTime now) {
     tracker.resume(now);
     gpsStatus = 'Đang ghi GPS';
-    notifyListeners();
+    _notify();
   }
 
   void addGpsPoint(GpsPoint point) {
     final accepted = tracker.addPoint(point);
     if (accepted == null) return;
-    notifyListeners();
+    _notify();
   }
 
   void stopGps(DateTime now) {
     tracker.stop(now);
     gpsStatus = 'Đã dừng GPS';
-    notifyListeners();
+    _notify();
   }
 
   void resetGps() {
+    _gpsSessionId = null;
     tracker.status = ActivityStatus.idle;
     tracker.startedAt = null;
     tracker.pausedAt = null;
@@ -98,28 +112,31 @@ class ActivityController extends ChangeNotifier {
     routeSaved = false;
     gpsStatus = 'GPS chưa bắt đầu';
     errorMessage = null;
-    notifyListeners();
+    _notify();
   }
 
   Future<void> saveGpsSession(DateTime endedAt) async {
     final startedAt = tracker.startedAt;
-    if (startedAt == null) return;
+    final sessionId = _gpsSessionId;
+    if (startedAt == null || sessionId == null) return;
     final effectiveEndedAt = tracker.stoppedAt ?? endedAt;
     final duration = tracker.durationAt(effectiveEndedAt);
+    final saveRoute = routeSaved && tracker.route.isNotEmpty;
     final session = ActivitySession(
-      id: const Uuid().v4(),
+      id: sessionId,
       ownerUid: ownerUid,
       activityName: activityName,
       durationSeconds: duration.inSeconds,
       estimatedDistanceMeters: tracker.estimatedDistanceMeters,
       feeling: feeling,
-      routeSaved: routeSaved,
+      routeSaved: saveRoute,
       startedAt: startedAt,
       endedAt: effectiveEndedAt,
-      route: routeSaved ? List<GpsPoint>.from(tracker.route) : const [],
+      route: saveRoute ? List<GpsPoint>.from(tracker.route) : const [],
+      inputSource: ActivityInputSource.gps,
     );
     final saved = await _save(session);
-    if (saved) {
+    if (saved && !_disposed) {
       resetGps();
     }
   }
@@ -141,14 +158,16 @@ class ActivityController extends ChangeNotifier {
       startedAt: startedAt,
       endedAt: endedAt,
       route: const [],
+      inputSource: ActivityInputSource.manual,
     );
     await _save(session);
   }
 
   Future<bool> _save(ActivitySession session) async {
+    if (isLoading || _disposed) return false;
     isLoading = true;
     errorMessage = null;
-    notifyListeners();
+    _notify();
     try {
       await repository.saveSession(session);
       sessions.removeWhere((item) => item.id == session.id);
@@ -159,7 +178,7 @@ class ActivityController extends ChangeNotifier {
       return false;
     } finally {
       isLoading = false;
-      notifyListeners();
+      _notify();
     }
   }
 }

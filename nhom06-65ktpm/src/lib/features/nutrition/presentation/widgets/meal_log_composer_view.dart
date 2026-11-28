@@ -18,7 +18,9 @@ class MealLogComposerView extends StatefulWidget {
   final RecommendationProfile profile;
   final MealNutritionUseCase useCase;
   final String mealType;
+  final String? initialMealName;
   final bool aiPhotoLabelConsentGranted;
+  final Future<bool> Function()? syncLogs;
 
   const MealLogComposerView({
     super.key,
@@ -26,7 +28,9 @@ class MealLogComposerView extends StatefulWidget {
     required this.profile,
     required this.useCase,
     this.mealType = 'lunch',
+    this.initialMealName,
     this.aiPhotoLabelConsentGranted = false,
+    this.syncLogs,
   });
 
   @override
@@ -35,7 +39,9 @@ class MealLogComposerView extends StatefulWidget {
 
 class _MealLogComposerViewState extends State<MealLogComposerView> {
   final _formKey = GlobalKey<FormState>();
-  final _mealNameController = TextEditingController();
+  late final _mealNameController = TextEditingController(
+    text: widget.initialMealName,
+  );
   final _noteController = TextEditingController();
 
   MealSuggestionSession? _session;
@@ -45,6 +51,10 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
   int _pendingPhotoCount = 0;
   bool _loading = true;
   bool _saving = false;
+  bool _picking = false;
+  bool _historyUnavailable = false;
+  int _loadGeneration = 0;
+  int _historyRequest = 0;
   String? _statusMessage;
 
   @override
@@ -58,12 +68,16 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.ownerUid != widget.ownerUid ||
         oldWidget.mealType != widget.mealType ||
+        oldWidget.initialMealName != widget.initialMealName ||
         oldWidget.profile != widget.profile) {
-      _mealNameController.clear();
+      _mealNameController.text = widget.initialMealName ?? '';
       _noteController.clear();
       _preparedPhoto = null;
       _optionalLabelResult = null;
       _statusMessage = null;
+      _history = const [];
+      _pendingPhotoCount = 0;
+      _historyUnavailable = false;
       _loadInitialData();
     }
   }
@@ -76,28 +90,50 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
   }
 
   Future<void> _loadInitialData() async {
+    final generation = ++_loadGeneration;
     setState(() => _loading = true);
     final session = await widget.useCase.loadSuggestions(
       profile: widget.profile,
       mealType: widget.mealType,
     );
-    final history = await widget.useCase.getMealHistory(
-      ownerUid: widget.ownerUid,
-    );
-    final pendingCount = await widget.useCase.countPendingPhotos(
-      ownerUid: widget.ownerUid,
-    );
-    if (!mounted) return;
+    if (!mounted || generation != _loadGeneration) return;
     setState(() {
       _session = session;
-      _history = history;
-      _pendingPhotoCount = pendingCount;
       _loading = false;
       final current = session.currentOption;
       if (current != null && _mealNameController.text.trim().isEmpty) {
         _mealNameController.text = current.item.name;
       }
     });
+    await _refreshHistory();
+  }
+
+  Future<void> _refreshHistory() async {
+    final generation = _loadGeneration;
+    final request = ++_historyRequest;
+    final owner = widget.ownerUid;
+    try {
+      final history = await widget.useCase.getMealHistory(ownerUid: owner);
+      final pendingCount = await widget.useCase.countPendingPhotos(
+        ownerUid: owner,
+      );
+      if (!mounted ||
+          generation != _loadGeneration ||
+          request != _historyRequest) {
+        return;
+      }
+      setState(() {
+        _history = history;
+        _pendingPhotoCount = pendingCount;
+        _historyUnavailable = false;
+      });
+    } catch (_) {
+      if (mounted &&
+          generation == _loadGeneration &&
+          request == _historyRequest) {
+        setState(() => _historyUnavailable = true);
+      }
+    }
   }
 
   void _swapMeal() {
@@ -114,8 +150,13 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
   }
 
   Future<void> _pickPhoto(MealPhotoSource source) async {
+    if (_picking || _saving) return;
+    final generation = _loadGeneration;
+    setState(() => _picking = true);
     final outcome = await widget.useCase.pickAndPreparePhoto(source);
-    if (!mounted || outcome.cancelled) return;
+    if (!mounted) return;
+    setState(() => _picking = false);
+    if (generation != _loadGeneration || outcome.cancelled) return;
     if (!outcome.hasPhoto) {
       setState(() {
         _preparedPhoto = null;
@@ -145,31 +186,49 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
     });
   }
 
+  Future<bool> _syncLogs() async =>
+      await (widget.syncLogs?.call() ?? Future.value(true));
+
   Future<void> _retryPendingPhotos() async {
-    if (_saving) return;
+    if (_saving || _picking) return;
+    final generation = _loadGeneration;
     setState(() => _saving = true);
     try {
+      final logsSynced = await _syncLogs();
+      if (!mounted || generation != _loadGeneration) return;
+      if (!logsSynced) {
+        setState(() {
+          _statusMessage =
+              'Nhật ký vẫn lưu trên thiết bị. Hãy thử đồng bộ lại sau.';
+        });
+        return;
+      }
       final report = await widget.useCase.retryPendingPhotoUploadsDetailed(
         ownerUid: widget.ownerUid,
       );
-      final updatedHistory = await widget.useCase.getMealHistory(
-        ownerUid: widget.ownerUid,
-      );
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
+      final syncedAttachments = report.uploadedCount == 0 || await _syncLogs();
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _history = updatedHistory;
-        _pendingPhotoCount = report.remainingPendingCount;
-        _statusMessage = report.userMessage;
+        _statusMessage = !syncedAttachments
+            ? '${report.userMessage} Nhật ký vẫn chờ đồng bộ.'
+            : _pendingPhotoCount == 0 && widget.syncLogs != null
+            ? 'Đã đồng bộ nhật ký bữa ăn.'
+            : report.userMessage;
       });
-    } finally {
-      if (mounted) {
-        setState(() => _saving = false);
+      await _refreshHistory();
+    } catch (_) {
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _statusMessage = 'Chưa thể đồng bộ. Hãy thử lại sau.');
       }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
   Future<void> _saveMealLog() async {
-    if (!_formKey.currentState!.validate() || _saving) return;
+    if (_saving || _picking || !_formKey.currentState!.validate()) return;
+    final generation = _loadGeneration;
     setState(() {
       _saving = true;
       _statusMessage = null;
@@ -190,28 +249,25 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
         preparedPhoto: _preparedPhoto,
         note: _noteController.text,
       );
-      final updatedHistory = await widget.useCase.getMealHistory(
-        ownerUid: widget.ownerUid,
-      );
-      final pendingCount = await widget.useCase.countPendingPhotos(
-        ownerUid: widget.ownerUid,
-      );
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
+      final synced = await _syncLogs();
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _history = updatedHistory;
-        _pendingPhotoCount = pendingCount;
         _preparedPhoto = null;
         _optionalLabelResult = null;
         _noteController.clear();
-        _statusMessage = result.userMessage;
+        _statusMessage = synced
+            ? result.userMessage
+            : '${result.userMessage} Nhật ký còn lưu trên thiết bị để đồng bộ sau.';
       });
+      await _refreshHistory();
     } on MealPhotoException catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _statusMessage = error.message;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _statusMessage =
             'Không thể hoàn tất thao tác. Vui lòng thử lưu lại nhật ký.';
@@ -255,8 +311,7 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Text(
-                session?.result.emptyReason ??
-                    'Không có món gợi ý phù hợp. Bạn có thể tự nhập tên món bên dưới.',
+                session?.result.emptyReason ?? 'Không có món gợi ý phù hợp. Bạn có thể tự nhập tên món bên dưới.',
               ),
             ),
           )
@@ -330,14 +385,14 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
                 runSpacing: 8,
                 children: [
                   OutlinedButton.icon(
-                    onPressed: _saving
+                    onPressed: _saving || _picking
                         ? null
                         : () => _pickPhoto(MealPhotoSource.camera),
                     icon: const Icon(Icons.camera_alt_outlined),
                     label: const Text('Chụp ảnh bữa ăn'),
                   ),
                   OutlinedButton.icon(
-                    onPressed: _saving
+                    onPressed: _saving || _picking
                         ? null
                         : () => _pickPhoto(MealPhotoSource.gallery),
                     icon: const Icon(Icons.photo_library_outlined),
@@ -392,14 +447,18 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
               ],
               const SizedBox(height: 12),
               FilledButton(
-                onPressed: _saving ? null : _saveMealLog,
+                onPressed: _saving || _picking ? null : _saveMealLog,
                 child: Text(_saving ? 'Đang lưu...' : 'Lưu nhật ký bữa ăn'),
               ),
-              if (_pendingPhotoCount > 0) ...[
+              if (_pendingPhotoCount > 0 || widget.syncLogs != null) ...[
                 const SizedBox(height: 8),
                 OutlinedButton(
-                  onPressed: _saving ? null : _retryPendingPhotos,
-                  child: Text('Thử đồng bộ $_pendingPhotoCount ảnh đang chờ'),
+                  onPressed: _saving || _picking ? null : _retryPendingPhotos,
+                  child: Text(
+                    _pendingPhotoCount > 0
+                        ? 'Thử đồng bộ $_pendingPhotoCount ảnh đang chờ'
+                        : 'Đồng bộ nhật ký',
+                  ),
                 ),
               ],
               if (_statusMessage case final message?) ...[
@@ -415,15 +474,27 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: 8),
-        if (_history.isEmpty)
-          const Text('Chưa có nhật ký bữa ăn nào.')
-        else
+        if (_historyUnavailable)
+          TextButton(
+            onPressed: _refreshHistory,
+            child: const Text('Không thể tải nhật ký. Thử lại'),
+          )
+        else if (_history.isEmpty)
+          const Text('Chưa có nhật ký bữa ăn nào.'),
+        if (_history.isNotEmpty)
           ..._history.map(
             (log) => Card(
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
                 title: Text(log.mealName),
                 subtitle: Text(_subtitleForLog(log)),
+                trailing: log.hasPhoto
+                    ? IconButton(
+                        tooltip: 'Xem ảnh bữa ăn',
+                        onPressed: () => _viewPhoto(log),
+                        icon: const Icon(Icons.image_outlined),
+                      )
+                    : null,
               ),
             ),
           ),
@@ -431,12 +502,58 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
     );
   }
 
+  void _viewPhoto(MealLog log) {
+    final url = widget.useCase.photoStorage.createShortLivedSignedUrl(
+      ownerUid: widget.ownerUid,
+      storagePath: log.imagePath!,
+    );
+    showDialog<void>(
+      context: context,
+      useRootNavigator: false,
+      builder: (context) => AlertDialog(
+        title: Text(log.mealName),
+        content: SizedBox(
+          width: 360,
+          height: 280,
+          child: FutureBuilder<String?>(
+            future: url,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final imageUrl = snapshot.data;
+              if (imageUrl == null) {
+                return const Text('Không thể mở ảnh riêng tư.');
+              }
+              return Image.network(
+                imageUrl,
+                fit: BoxFit.contain,
+                semanticLabel: 'Ảnh bữa ăn',
+                errorBuilder: (context, error, stackTrace) =>
+                    const Text('Không thể tải ảnh riêng tư.'),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
+  }
+
   static String _subtitleForLog(MealLog log) {
     if (log.hasPhoto) {
-      return 'Ảnh riêng tư: ${log.imagePath}';
+      return 'Có ảnh riêng tư';
     }
     if (log.photoUploadStatus == MealPhotoUploadStatus.pendingLocal) {
       return 'Đã lưu cục bộ • Ảnh đang chờ đồng bộ khi có mạng';
+    }
+    if (log.photoUploadStatus == MealPhotoUploadStatus.failed) {
+      return 'Ảnh chưa được lưu';
     }
     return 'Ghi nhận nhập tay (không có ảnh)';
   }

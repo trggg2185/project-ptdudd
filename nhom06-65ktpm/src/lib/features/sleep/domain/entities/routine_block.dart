@@ -1,3 +1,5 @@
+import '../../../profile/domain/schedule_block.dart';
+
 /// Loại khối hoạt động hiển thị trên giao diện lịch sinh hoạt 24 giờ responsive.
 enum RoutineBlockKind {
   /// Ca làm việc (bao gồm cả ca đêm qua nửa đêm, ví dụ 22:00–06:00).
@@ -25,6 +27,7 @@ class RoutineBlock {
   final DateTime startsAt;
   final DateTime endsAt;
   final int travelMinutes;
+  final ScheduleBlock? schedule;
 
   const RoutineBlock({
     required this.id,
@@ -33,7 +36,34 @@ class RoutineBlock {
     required this.startsAt,
     required this.endsAt,
     this.travelMinutes = 0,
+    this.schedule,
   });
+
+  factory RoutineBlock.fromScheduleBlock(ScheduleBlock block) => RoutineBlock(
+    id: block.id,
+    title: block.title,
+    kind: block.kind == ScheduleKind.work
+        ? RoutineBlockKind.workShift
+        : RoutineBlockKind.busy,
+    startsAt: block.startsAt,
+    endsAt: block.endsAt,
+    travelMinutes: block.travelMinutes,
+    schedule: block,
+  );
+
+  Iterable<({DateTime start, DateTime end})> intervalsForDay(
+    DateTime day,
+  ) sync* {
+    final block = schedule;
+    if (block == null) {
+      yield (start: startsAt, end: endsAt);
+      return;
+    }
+    yield* block.occupiedTimesBetween(
+      day,
+      DateTime(day.year, day.month, day.day + 1),
+    );
+  }
 
   Duration get duration => endsAt.difference(startsAt);
 }

@@ -1,12 +1,15 @@
 import 'dart:async';
 
+import '../../data/stores/in_memory_notification_background_state_store.dart';
+import '../entities/reminder_preferences.dart';
 import '../entities/scheduled_reminder.dart';
 import '../logic/notification_deduplicator.dart';
-import '../logic/notification_privacy_formatter.dart';
 import '../logic/reminder_scheduler_engine.dart';
 import '../repositories/fcm_messaging_gateway.dart';
 import '../repositories/local_notification_gateway.dart';
+import '../repositories/notification_background_state_store.dart';
 import '../repositories/notification_repository.dart';
+import 'fcm_background_message_processor.dart';
 
 /// Tác vụ vô hiệu hóa `device_tokens` bị lỗi mạng khi đăng xuất/đổi tài khoản, được giữ lại để retry.
 class PendingTokenDeactivation {
@@ -41,6 +44,8 @@ class NotificationAccountCoordinator {
   final LocalNotificationGateway gateway;
   final FcmMessagingGateway? fcmGateway;
   final NotificationDeduplicator deduplicator;
+  final NotificationBackgroundStateStore backgroundStateStore;
+  final bool _sharesInMemoryDeduplicator;
   final NotificationRepository? Function()? repositoryResolver;
   final DateTime Function() _nowProvider;
 
@@ -61,14 +66,91 @@ class NotificationAccountCoordinator {
   StreamSubscription<IncomingFcmMessage>? _foregroundMessageSub;
   bool _listenersAttached = false;
 
-  NotificationAccountCoordinator({
-    required this.gateway,
-    this.fcmGateway,
+  factory NotificationAccountCoordinator({
+    required LocalNotificationGateway gateway,
+    FcmMessagingGateway? fcmGateway,
     NotificationDeduplicator? deduplicator,
-    this.repositoryResolver,
+    NotificationBackgroundStateStore? backgroundStateStore,
+    NotificationRepository? Function()? repositoryResolver,
     DateTime Function()? nowProvider,
-  }) : deduplicator = deduplicator ?? NotificationDeduplicator(),
-       _nowProvider = nowProvider ?? DateTime.now;
+  }) {
+    final resolvedDeduplicator = deduplicator ?? NotificationDeduplicator();
+    final sharesInMemory = backgroundStateStore == null;
+    final resolvedStore =
+        backgroundStateStore ??
+        InMemoryNotificationBackgroundStateStore(
+          deduplicator: resolvedDeduplicator,
+        );
+    return NotificationAccountCoordinator._internal(
+      sharesInMemory,
+      nowProvider ?? DateTime.now,
+      gateway: gateway,
+      fcmGateway: fcmGateway,
+      deduplicator: resolvedDeduplicator,
+      backgroundStateStore: resolvedStore,
+      repositoryResolver: repositoryResolver,
+    );
+  }
+
+  NotificationAccountCoordinator._internal(
+    this._sharesInMemoryDeduplicator,
+    this._nowProvider, {
+    required this.gateway,
+    required this.fcmGateway,
+    required this.deduplicator,
+    required this.backgroundStateStore,
+    required this.repositoryResolver,
+  });
+
+  /// Đồng bộ ảnh chụp cấu hình runtime không nhạy cảm xuống kho bền vững cho isolate nền FCM.
+  Future<void> syncRuntimePreferences(ReminderPreferences preferences) async {
+    try {
+      await backgroundStateStore.saveRuntimeState(
+        NotificationRuntimeState.fromPreferences(
+          preferences,
+          updatedAtUtc: _nowProvider().toUtc(),
+        ),
+      );
+    } catch (_) {
+      // Không chặn luồng chính nếu kho bền vững tạm thời không khả dụng.
+    }
+  }
+
+  /// Kiểm tra & chiếm khóa chống trùng Local ↔ FCM trên cả RAM lẫn kho bền vững xuyên isolate.
+  Future<bool> tryAcquireDedupeKey({
+    required String ownerUid,
+    required String dedupeKey,
+    required NotificationChannelSource source,
+    required DateTime nowUtc,
+  }) async {
+    if (_sharesInMemoryDeduplicator) {
+      return backgroundStateStore.tryAcquireDedupeKey(
+        ownerUid: ownerUid,
+        dedupeKey: dedupeKey,
+        source: source,
+        nowUtc: nowUtc,
+        window: deduplicator.dedupeWindow,
+      );
+    }
+    final memAcquired = deduplicator.tryAcquire(
+      ownerUid: ownerUid,
+      dedupeKey: dedupeKey,
+      source: source,
+      nowUtc: nowUtc,
+    );
+    if (!memAcquired) return false;
+    try {
+      return await backgroundStateStore.tryAcquireDedupeKey(
+        ownerUid: ownerUid,
+        dedupeKey: dedupeKey,
+        source: source,
+        nowUtc: nowUtc,
+        window: deduplicator.dedupeWindow,
+      );
+    } catch (_) {
+      return true;
+    }
+  }
 
   String? get activeOwnerUid => _activeOwnerUid;
   String? get authorizedOwnerUid => _authorizedOwnerUid;
@@ -142,6 +224,7 @@ class NotificationAccountCoordinator {
       final permission = await gateway.checkPermissionStatus();
       final detectedTz = await gateway.detectDeviceTimezone();
       final prefs = await repo.getPreferences(ownerUid);
+      await syncRuntimePreferences(prefs);
       final items = await repo.getPlanItems(ownerUid);
       final pending = await gateway.pendingNotifications();
 
@@ -208,76 +291,63 @@ class NotificationAccountCoordinator {
     }
   }
 
-  /// Xử lý thông báo đẩy FCM đến khi ứng dụng đang mở qua bộ chống trùng Local ↔ FCM.
-  ///
-  /// - Bỏ qua nếu thông báo thuộc tài khoản khác (`ownerUid != activeOwnerUid`).
-  /// - Bỏ qua nếu đang tắt nhắc hoặc rơi vào giờ yên lặng.
-  /// - Bỏ qua nếu `NotificationDeduplicator` phát hiện đã phát bởi Local/FCM trong TTL.
-  /// - Luôn phát bằng nội dung trung tính an toàn cho màn hình khóa (`NotificationVisibility.private`).
+  /// Xử lý thông báo đẩy FCM đến khi ứng dụng đang mở qua cùng bộ xử lý chống trùng
+  /// và bảo vệ màn hình khóa với background/terminated handler (`FcmBackgroundMessageProcessor`).
   Future<bool> handleIncomingFcmMessage(IncomingFcmMessage message) async {
     final activeUid = _activeOwnerUid;
     if (activeUid == null || activeUid.isEmpty) return false;
-    if (message.ownerUid != null &&
-        message.ownerUid!.isNotEmpty &&
-        message.ownerUid != activeUid) {
-      return false;
-    }
 
     final nowUtc = _nowProvider().toUtc();
+    ReminderPreferences? prefs;
     final repo = repositoryResolver?.call();
     if (repo != null) {
       try {
-        final prefs = await repo.getPreferences(activeUid);
-        if (!prefs.remindersEnabled || prefs.isInQuietHours(nowUtc)) {
-          return false;
-        }
+        prefs = await repo.getPreferences(activeUid);
+        await syncRuntimePreferences(prefs);
       } catch (_) {
-        // Nếu tạm không đọc được preferences khi online chập chờn, vẫn tiếp tục kiểm tra dedupe.
+        // Nếu tạm không đọc được preferences khi online chập chờn, dùng trạng thái runtime đã lưu.
       }
     }
 
     final dedupeKey = message.effectiveDedupeKey(activeUid);
-    final acquired = deduplicator.tryAcquire(
-      ownerUid: activeUid,
-      dedupeKey: dedupeKey,
-      source: NotificationChannelSource.fcm,
-      nowUtc: nowUtc,
-    );
-    if (!acquired) {
+    if (!_sharesInMemoryDeduplicator &&
+        deduplicator.isRecentlyDispatched(
+          ownerUid: activeUid,
+          dedupeKey: dedupeKey,
+          nowUtc: nowUtc,
+        )) {
       _suppressedFcmDuplicateCount++;
       return false;
     }
 
-    final permission = await gateway.checkPermissionStatus();
-    if (!permission.canScheduleLocal) return false;
-
-    final syntheticItemId =
-        (message.itemId != null && message.itemId!.isNotEmpty)
-        ? message.itemId!
-        : (message.messageId ?? 'fcm-${nowUtc.millisecondsSinceEpoch}');
-    final reminder = ScheduledReminder(
-      notificationId: ReminderSchedulerEngine.stableNotificationId(
-        ownerUid: activeUid,
-        itemId: syntheticItemId,
-      ),
-      ownerUid: activeUid,
-      planId: message.planId ?? 'fcm-server-event',
-      itemId: syntheticItemId,
-      itemType: message.itemType,
-      dedupeKey: dedupeKey,
-      originalScheduledAtUtc: message.scheduledAtUtc ?? nowUtc,
-      effectiveScheduledAtUtc: nowUtc,
-      timezoneName: _lastSyncedTimezone ?? 'Asia/Ho_Chi_Minh',
-      deferredByQuietHours: false,
-      isSnoozed: false,
-      lockScreenTitle: NotificationPrivacyFormatter.neutralLockScreenTitle,
-      lockScreenBody: NotificationPrivacyFormatter.neutralLockScreenBody,
-      inAppTitle: 'HealthyLife • ${message.itemType.displayLabel}',
-      inAppBody: NotificationPrivacyFormatter.neutralLockScreenBody,
+    final processor = FcmBackgroundMessageProcessor(
+      gateway: gateway,
+      stateStore: backgroundStateStore,
+      dedupeWindow: deduplicator.dedupeWindow,
+      nowProvider: _nowProvider,
     );
-
-    await gateway.showImmediate(reminder);
-    return true;
+    final outcome = await processor.process(
+      message,
+      fallbackOwnerUid: activeUid,
+      preferencesOverride: prefs,
+      isBackgroundIsolate: false,
+    );
+    if (outcome == FcmHandleOutcome.suppressedDuplicate) {
+      _suppressedFcmDuplicateCount++;
+      return false;
+    }
+    if (outcome == FcmHandleOutcome.dispatched) {
+      if (!_sharesInMemoryDeduplicator) {
+        deduplicator.tryAcquire(
+          ownerUid: activeUid,
+          dedupeKey: dedupeKey,
+          source: NotificationChannelSource.fcm,
+          nowUtc: nowUtc,
+        );
+      }
+      return true;
+    }
+    return false;
   }
 
   /// Gọi trước khi thực thi `auth.signOut()` để thu hồi nhắc lịch & vô hiệu hóa token của [ownerUid].
@@ -429,6 +499,11 @@ class NotificationAccountCoordinator {
   }) async {
     deduplicator.clearForOwner(ownerUid);
     _snoozesByOwner.remove(ownerUid);
+    try {
+      await backgroundStateStore.clearForOwner(ownerUid);
+    } catch (_) {
+      // Không chặn đăng xuất nếu dọn kho trạng thái nền gặp lỗi cục bộ.
+    }
 
     try {
       await gateway.cancelAll();

@@ -97,15 +97,19 @@ class FirebaseMessagingGateway implements FcmMessagingGateway {
   Stream<IncomingFcmMessage> get onForegroundMessage {
     if (!_hasFirebaseApp) return const Stream<IncomingFcmMessage>.empty();
     try {
-      return FirebaseMessaging.onMessage.map(_mapRemoteMessage);
+      return FirebaseMessaging.onMessage.map(mapRemoteMessage);
     } catch (_) {
       return const Stream<IncomingFcmMessage>.empty();
     }
   }
 
-  static IncomingFcmMessage _mapRemoteMessage(RemoteMessage message) {
+  /// Chuyển đổi `RemoteMessage` sang `IncomingFcmMessage` (chỉ trích xuất siêu dữ liệu điều phối,
+  /// dùng chung cho cả foreground `onMessage` lẫn background/terminated `onBackgroundMessage`).
+  static IncomingFcmMessage mapRemoteMessage(RemoteMessage message) {
     final data = message.data;
     final rawScheduled = data['scheduled_at'] as String?;
+    final rawPlanStatus = (data['plan_status'] as String?)?.trim();
+    final rawItemStatus = (data['item_status'] as String?)?.trim();
     return IncomingFcmMessage(
       messageId: message.messageId,
       ownerUid: (data['owner_uid'] as String?)?.trim(),
@@ -117,6 +121,13 @@ class FirebaseMessagingGateway implements FcmMessagingGateway {
           ? DateTime.tryParse(rawScheduled)?.toUtc()
           : null,
       sentTimeUtc: message.sentTime?.toUtc(),
+      planStatus: (rawPlanStatus != null && rawPlanStatus.isNotEmpty)
+          ? PlanApprovalStatus.fromDb(rawPlanStatus)
+          : null,
+      itemStatus: (rawItemStatus != null && rawItemStatus.isNotEmpty)
+          ? PlanItemStatus.fromDb(rawItemStatus)
+          : null,
+      hasSystemNotificationPayload: message.notification != null,
     );
   }
 }

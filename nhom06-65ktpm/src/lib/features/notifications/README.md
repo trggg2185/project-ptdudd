@@ -7,9 +7,14 @@ Phụ trách: Phương Văn Đức (`@pvduc05`) — Review chéo: Hàn Hoàng H�
 - **Chỉ đặt nhắc từ lịch đã duyệt (`approved`):**
   - `ReminderSchedulerEngine.reconcile()` lọc chặt chỉ tạo nhắc khi cả `plans.status == 'approved'` lẫn `plan_items.status == 'approved'`.
   - Các mục lịch nháp (`draft`), đã hoàn thành (`completed`), đã bỏ qua (`skipped`) hoặc lịch đã hủy (`cancelled`) tuyệt đối không tạo nhắc và được hiển thị tách biệt trên `NotificationsPage`.
-- **Hủy nhắc cũ khi sửa/xóa/bỏ qua lịch & chống trùng Local/FCM:**
+- **Hủy nhắc cũ khi sửa/xóa/bỏ qua lịch & chống trùng Local/FCM (foreground, background, terminated):**
   - Mỗi cặp `(ownerUid, itemId)` dùng ID thông báo 31-bit xác định ổn định (`FNV-1a`), tự động hủy ID cũ khi đổi giờ, xóa mục, bỏ qua mục hoặc tắt nhắc lịch.
-  - `FirebaseMessagingGateway` (tích hợp `firebase_messaging`) nối vào `NotificationAccountCoordinator`: tự động gọi `registerDeviceToken()` khi phiên có quyền `role: authenticated`, lắng nghe `onTokenRefresh` (đăng ký token mới + thu hồi token cũ) và đi qua `NotificationDeduplicator` trên `FirebaseMessaging.onMessage` (foreground) để chặn phát trùng Local ↔ FCM trong cửa sổ TTL 15 phút và ép nội dung trung tính an toàn màn hình khóa.
+  - `FirebaseMessagingGateway` (tích hợp `firebase_messaging` v17) nối vào `NotificationAccountCoordinator`: tự động gọi `registerDeviceToken()` khi phiên có quyền `role: authenticated`, lắng nghe xoay vòng token (`onRegistered`, đồng thời thu hồi token cũ), xử lý `FirebaseMessaging.onMessage` (foreground) và đăng ký top-level `@pragma('vm:entry-point')` `FirebaseMessaging.onBackgroundMessage(healthyLifeFcmBackgroundHandler)` trong `main.dart` cho chế độ **background / terminated**.
+  - Chống trùng xuyên isolate hai lớp (`FcmBackgroundMessageProcessor` + `SqliteNotificationBackgroundStateStore` trên `healthylife.db`): chia sẻ trạng thái `active_owner_uid`, cấu hình giờ yên lặng và bảng khóa `notification_dedupe_entries` (TTL 15 phút) giữa UI isolate và background isolate, đồng thời đối chiếu `pendingNotifications()` trên thiết bị để ưu tiên Local Notification và không phát đúp FCM.
+- **Hợp đồng payload FCM phía server (Data-Only, bắt buộc):**
+  - Server **chỉ được gửi data-only FCM payload** (tuyệt đối **không** gửi khối `notification` công khai/nhạy cảm) để Android luôn định tuyến qua `healthyLifeFcmBackgroundHandler` (ở background/terminated) và `onMessage` (ở foreground), bảo đảm mọi thông báo đều đi qua kiểm tra `owner_uid`, trạng thái `approved`, giờ yên lặng, bộ chống trùng Local ↔ FCM và khóa `NotificationVisibility.private`.
+  - Chỉ cho phép các trường siêu dữ liệu kỹ thuật trong `data`: `owner_uid`, `plan_id`, `item_id`, `item_type`, `dedupe_key`, `scheduled_at`, `plan_status`, `item_status`. **Cấm** đính kèm chỉ số cơ thể (`kg`, `BMI`, `kcal`), dị ứng, bệnh lý, thuốc hoặc tọa độ GPS trong payload FCM.
+  - Nếu có thông báo lỡ vi phạm hợp đồng gửi kèm khối `notification` ở nền (`message.notification != null`), handler sẽ bỏ qua không gọi `showImmediate()` để tránh phát đúp.
 - **Tạm hoãn (Snooze) & Giờ yên lặng (Quiet Hours):**
   - Hỗ trợ khung giờ yên lặng qua nửa đêm (`22:00 – 07:00`) lẫn khung ban ngày cho người làm ca đêm (`08:00 – 15:00`) theo múi giờ IANA chuẩn (`package:timezone`).
   - Lời nhắc thường hoặc lời nhắc tạm hoãn (`+5 / +10 / +15 / +30 phút`) rơi vào giờ yên lặng được tự động lùi ra ngay sau giờ kết thúc yên lặng (bảo toàn chuyển đổi DST).
@@ -51,8 +56,8 @@ Các kiểm thử tự động trong `test/features/notifications/` chạy cục
    - Kiểm tra giờ yên lặng (cả `22:00 – 07:00` và `08:00 – 15:00`), tạm hoãn (Snooze), đổi múi giờ máy, khởi động lại điện thoại thật (xác nhận `BOOT_COMPLETED` hoặc khôi phục toàn app khi mở lại) và ghi nhận sai lệch Doze/OEM nếu có.
 2. **Supabase cloud RLS hai tài khoản (`A` và `B`):**
    - Smoke-test đọc/ghi `reminder_preferences` (kể cả kiểm tra xung đột `version`), đăng ký và vô hiệu hóa `device_tokens` theo đúng `owner_uid`, xác nhận tài khoản B không đọc/sửa được cấu hình hoặc token của tài khoản A.
-3. **End-to-end FCM thật:**
-   - Xác nhận nhận token FCM thật ghi vào `public.device_tokens`, bắn thử payload FCM data-only trùng `dedupe_key` khi ứng dụng mở để xác nhận chống trùng Local ↔ FCM và không lộ dữ liệu sức khỏe, rồi đăng xuất đổi tài khoản để xác nhận `deleteToken()` + `is_active = false`.
+3. **End-to-end FCM thật (foreground, background và terminated):**
+   - Xác nhận nhận token/registration ID FCM thật ghi vào `public.device_tokens`, thử bắn payload FCM **data-only** trùng `dedupe_key` ở cả 3 trạng thái **foreground, background và terminated** để xác nhận chống trùng Local ↔ FCM (qua SQLite xuyên isolate + `pendingNotifications`) và màn hình khóa luôn hiển thị nội dung trung tính `NotificationVisibility.private`, rồi đăng xuất đổi tài khoản để xác nhận `unregister()` + `is_active = false` + xóa trạng thái nền của tài khoản cũ.
 
 **Giới hạn thực tế của thiết bị đã ghi nhận:**
 - Cơ chế tiết kiệm pin / Doze mode của một số hãng Android (Xiaomi/MIUI, Oppo/ColorOS, Huawei, Samsung) có thể làm trễ thông báo `inexactAllowWhileIdle` vài phút hoặc chặn receiver `BOOT_COMPLETED` nếu người dùng bật hạn chế chạy nền sâu; ứng dụng tự đối chiếu khôi phục nhắc toàn app khi người dùng mở lại app.

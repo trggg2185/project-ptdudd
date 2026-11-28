@@ -17,13 +17,17 @@ import 'features/habits/data/repositories/in_memory_habit_repository.dart';
 import 'features/habits/data/repositories/supabase_habit_repository.dart';
 import 'features/habits/domain/repositories/habit_repository.dart';
 import 'features/habits/presentation/pages/habits_page.dart';
+import 'features/notifications/data/gateways/firebase_messaging_background_handler.dart';
 import 'features/notifications/data/gateways/firebase_messaging_gateway.dart';
 import 'features/notifications/data/gateways/flutter_local_notifications_gateway.dart';
 import 'features/notifications/data/gateways/in_memory_local_notification_gateway.dart';
 import 'features/notifications/data/repositories/in_memory_notification_repository.dart';
 import 'features/notifications/data/repositories/supabase_notification_repository.dart';
+import 'features/notifications/data/stores/in_memory_notification_background_state_store.dart';
+import 'features/notifications/data/stores/sqlite_notification_background_state_store.dart';
 import 'features/notifications/domain/repositories/fcm_messaging_gateway.dart';
 import 'features/notifications/domain/repositories/local_notification_gateway.dart';
+import 'features/notifications/domain/repositories/notification_background_state_store.dart';
 import 'features/notifications/domain/repositories/notification_repository.dart';
 import 'features/notifications/domain/services/notification_account_coordinator.dart';
 import 'features/notifications/presentation/pages/notifications_page.dart';
@@ -113,6 +117,7 @@ NotificationRepository resolveNotificationRepository({
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  registerHealthyLifeFcmBackgroundHandler();
   runApp(const HealthyLifeApp());
 }
 
@@ -145,10 +150,15 @@ class _HealthyLifeAppState extends State<HealthyLifeApp>
       widget.notificationGateway ?? FlutterLocalNotificationsGateway();
   late final FcmMessagingGateway _fcmMessagingGateway =
       widget.fcmMessagingGateway ?? FirebaseMessagingGateway();
+  late final NotificationBackgroundStateStore _notificationBackgroundStore =
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+      ? SqliteNotificationBackgroundStateStore(_mealDatabase)
+      : InMemoryNotificationBackgroundStateStore();
   late final NotificationAccountCoordinator _notificationAccountCoordinator =
       NotificationAccountCoordinator(
         gateway: _notificationGateway,
         fcmGateway: _fcmMessagingGateway,
+        backgroundStateStore: _notificationBackgroundStore,
         repositoryResolver: () {
           if (widget.notificationRepository != null) {
             return widget.notificationRepository;

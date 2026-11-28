@@ -1,6 +1,13 @@
 import '../entities/approved_plan_reminder_item.dart';
 
-/// Dữ liệu thông báo đẩy FCM nhận được ở foreground (chỉ đọc siêu dữ liệu, không tin nội dung nhạy cảm).
+/// Dữ liệu thông báo đẩy FCM nhận được (chỉ đọc siêu dữ liệu kỹ thuật, không tin nội dung nhạy cảm).
+///
+/// **Hợp đồng phía server (bắt buộc):**
+/// - Chỉ gửi **data-only** FCM payload (không gửi khối `notification` công khai) để thông báo ở
+///   cả foreground, background lẫn terminated đều đi qua bộ chống trùng và nội dung trung tính private.
+/// - Chỉ truyền siêu dữ liệu điều phối (`owner_uid`, `plan_id`, `item_id`, `item_type`,
+///   `dedupe_key`, `scheduled_at`, `plan_status`, `item_status`); tuyệt đối không truyền
+///   chỉ số cơ thể, dị ứng, bệnh lý, thuốc hay tọa độ GPS.
 class IncomingFcmMessage {
   final String? messageId;
   final String? ownerUid;
@@ -10,6 +17,12 @@ class IncomingFcmMessage {
   final String? dedupeKey;
   final DateTime? scheduledAtUtc;
   final DateTime? sentTimeUtc;
+  final PlanApprovalStatus? planStatus;
+  final PlanItemStatus? itemStatus;
+
+  /// `true` nếu server gửi kèm khối `notification` (vi phạm hợp đồng data-only; Android có thể
+  /// đã tự hiển thị ở background/terminated nên handler không được phát đúp thêm lần nữa).
+  final bool hasSystemNotificationPayload;
 
   const IncomingFcmMessage({
     this.messageId,
@@ -20,7 +33,15 @@ class IncomingFcmMessage {
     this.dedupeKey,
     this.scheduledAtUtc,
     this.sentTimeUtc,
+    this.planStatus,
+    this.itemStatus,
+    this.hasSystemNotificationPayload = false,
   });
+
+  /// Kiểm tra trạng thái phê duyệt nếu payload có đính kèm `plan_status` / `item_status`.
+  bool get isApprovedOrUnspecified =>
+      (planStatus == null || planStatus == PlanApprovalStatus.approved) &&
+      (itemStatus == null || itemStatus == PlanItemStatus.approved);
 
   /// Sinh khóa chống trùng thống nhất cùng định dạng với `ApprovedPlanReminderItem.dedupeKey`.
   String effectiveDedupeKey(String activeOwnerUid) {

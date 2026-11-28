@@ -126,6 +126,7 @@ class NotificationController extends ChangeNotifier {
       _permissionStatus = results[2]! as NotificationPermissionStatus;
       _deviceTimezone = results[3]! as String;
 
+      await accountCoordinator.syncRuntimePreferences(_preferences);
       await _reconcileDeviceSchedule(forceReschedule: false);
       _hasLoadedOnce = true;
       _loadError = null;
@@ -237,6 +238,7 @@ class NotificationController extends ChangeNotifier {
 
     _preferences = saved;
     _actionError = null;
+    await accountCoordinator.syncRuntimePreferences(_preferences);
 
     try {
       final tzChanged = previousTz != saved.timezone;
@@ -435,7 +437,7 @@ class NotificationController extends ChangeNotifier {
     final nowUtc = _nowProvider().toUtc();
     if (_preferences.isInQuietHours(nowUtc)) return false;
 
-    final acquired = deduplicator.tryAcquire(
+    final acquired = await accountCoordinator.tryAcquireDedupeKey(
       ownerUid: currentUserId,
       dedupeKey: item.dedupeKey,
       source: source,

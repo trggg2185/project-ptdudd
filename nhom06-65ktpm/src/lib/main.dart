@@ -20,8 +20,14 @@ import 'features/sleep/data/repositories/in_memory_sleep_repository.dart';
 import 'features/sleep/data/repositories/supabase_sleep_repository.dart';
 import 'features/sleep/domain/repositories/sleep_repository.dart';
 import 'features/sleep/presentation/pages/sleep_page.dart';
+import 'features/planner/data/supabase_weekly_plan_repository.dart';
+import 'features/planner/domain/weekly_plan.dart';
+import 'features/planner/domain/weekly_planner.dart';
+import 'features/planner/presentation/planner_page.dart';
 import 'features/profile/data/supabase_profile_repository.dart';
 import 'features/profile/presentation/profile_page.dart';
+import 'features/recommendations/data/repositories/fixture_catalog_repository.dart';
+import 'features/recommendations/domain/usecases/get_recommendations_usecase.dart';
 
 /// Khởi tạo và phân giải repository phù hợp cho module Thói quen:
 /// - Khi Supabase đã được cấu hình và khởi tạo (`isInitialized == true`):
@@ -102,6 +108,53 @@ class _HealthyLifeAppState extends State<HealthyLifeApp> {
     }
   }
 
+  Widget _mealJournal(AuthSession session, {PlanItem? item}) => MealJournalPage(
+    client: Supabase.instance.client,
+    ownerUid: session.uid,
+    currentOwnerUid: () => FirebaseAuth.instance.currentUser?.uid,
+    localDatabase: !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+        ? _mealDatabase
+        : null,
+    initialMealName: item?.title,
+    mealType: item?.mealType ?? 'lunch',
+  );
+
+  Widget _activityJournal(AuthSession session, {PlanItem? item}) =>
+      ActivityPage(
+        repository: resolveActivityRepository(),
+        ownerUid: session.uid,
+        initialActivityName: item?.title,
+      );
+
+  Widget _sleepJournal(AuthSession session) => SleepPage(
+    repository: SupabaseSleepRepository(),
+    currentUserId: session.uid,
+  );
+
+  Widget _habits(AuthSession session) => HabitsPage(
+    repository: SupabaseHabitRepository(),
+    currentUserId: session.uid,
+  );
+
+  Widget _planner(AuthSession session) {
+    final client = Supabase.instance.client;
+    final profile = SupabaseProfileRepository(client, session.uid);
+    return PlannerPage(
+      profileRepository: profile,
+      repository: SupabaseWeeklyPlanRepository(client, session.uid),
+      planner: const WeeklyPlanner(
+        GetRecommendationsUseCase(repository: FixtureCatalogRepository()),
+      ),
+      profilePageBuilder: (_) => ProfilePage(repository: profile),
+      journalPageBuilder: (item) => switch (item.kind) {
+        PlanItemKind.meal => _mealJournal(session, item: item),
+        PlanItemKind.sleep => _sleepJournal(session),
+        PlanItemKind.exercise => _activityJournal(session, item: item),
+        PlanItemKind.habit || PlanItemKind.manual => _habits(session),
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Nếu được truyền sleepRepository cụ thể (ví dụ trong widget test hoặc demo độc lập):
@@ -163,28 +216,13 @@ class _HealthyLifeAppState extends State<HealthyLifeApp> {
                   Supabase.instance.client,
                   session.uid,
                 ),
+                plannerPageBuilder: (_) => _planner(session),
               ),
-              habitsPageBuilder: (session) => HabitsPage(
-                repository: SupabaseHabitRepository(),
-                currentUserId: session.uid,
-              ),
-              sleepPageBuilder: (session) => SleepPage(
-                repository: SupabaseSleepRepository(),
-                currentUserId: session.uid,
-              ),
-              nutritionPageBuilder: (session) => MealJournalPage(
-                client: Supabase.instance.client,
-                ownerUid: session.uid,
-                currentOwnerUid: () => FirebaseAuth.instance.currentUser?.uid,
-                localDatabase:
-                    !kIsWeb && defaultTargetPlatform == TargetPlatform.android
-                    ? _mealDatabase
-                    : null,
-              ),
-              activityPageBuilder: (session) => ActivityPage(
-                repository: resolveActivityRepository(),
-                ownerUid: session.uid,
-              ),
+              plannerPageBuilder: _planner,
+              habitsPageBuilder: _habits,
+              sleepPageBuilder: _sleepJournal,
+              nutritionPageBuilder: _mealJournal,
+              activityPageBuilder: _activityJournal,
             );
           }
 

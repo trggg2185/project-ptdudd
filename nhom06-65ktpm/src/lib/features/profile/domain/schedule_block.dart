@@ -146,6 +146,39 @@ class ScheduleBlock {
     );
   }
 
+  /// Returns occupied occurrences that intersect the half-open instant range.
+  Iterable<({DateTime start, DateTime end})> occupiedTimesBetween(
+    DateTime start,
+    DateTime end,
+  ) sync* {
+    if (!start.isBefore(end)) return;
+    if (!repeatsWeekly) {
+      final time = occupiedTimeOn(localStart);
+      if (time != null && time.start.isBefore(end) && time.end.isAfter(start)) {
+        yield time;
+      }
+      return;
+    }
+
+    final location = profileLocation(timeZone)!;
+    final first = calendarDate(tz.TZDateTime.from(start, location));
+    final last = calendarDate(tz.TZDateTime.from(end, location));
+    final span = calendarDate(localEnd)
+        .difference(calendarDate(localStart))
+        .inDays;
+    // The shift and travel can extend past either edge of the query.
+    for (
+      var date = first.subtract(Duration(days: span + 2));
+      !date.isAfter(last.add(const Duration(days: 1)));
+      date = date.add(const Duration(days: 1))
+    ) {
+      final time = occupiedTimeOn(date);
+      if (time != null && time.start.isBefore(end) && time.end.isAfter(start)) {
+        yield time;
+      }
+    }
+  }
+
   static tz.TZDateTime _clockAt(tz.Location zone, DateTime date, int minute) {
     final hour = minute ~/ 60;
     final time = tz.TZDateTime(

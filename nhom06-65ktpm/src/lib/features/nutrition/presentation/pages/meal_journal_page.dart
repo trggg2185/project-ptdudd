@@ -24,12 +24,16 @@ class MealJournalPage extends StatefulWidget {
     required this.ownerUid,
     required this.currentOwnerUid,
     this.localDatabase,
+    this.initialMealName,
+    this.mealType = 'lunch',
   });
 
   final SupabaseClient client;
   final String ownerUid;
   final String? Function() currentOwnerUid;
   final LocalDatabase? localDatabase;
+  final String? initialMealName;
+  final String mealType;
 
   @override
   State<MealJournalPage> createState() => _MealJournalPageState();
@@ -122,6 +126,8 @@ class _MealJournalPageState extends State<MealJournalPage> {
             ownerUid: widget.ownerUid,
             profile: profile.toRecommendationProfile(),
             useCase: _useCase,
+            initialMealName: widget.initialMealName,
+            mealType: widget.mealType,
             syncLogs: widget.localDatabase == null ? null : _syncLogs,
           );
         },

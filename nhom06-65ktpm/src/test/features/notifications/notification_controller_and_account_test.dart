@@ -1,8 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:healthylife/features/notifications/data/gateways/in_memory_fcm_messaging_gateway.dart';
 import 'package:healthylife/features/notifications/data/gateways/in_memory_local_notification_gateway.dart';
 import 'package:healthylife/features/notifications/data/repositories/in_memory_notification_repository.dart';
 import 'package:healthylife/features/notifications/domain/entities/approved_plan_reminder_item.dart';
 import 'package:healthylife/features/notifications/domain/entities/scheduled_reminder.dart';
+import 'package:healthylife/features/notifications/domain/logic/notification_privacy_formatter.dart';
+import 'package:healthylife/features/notifications/domain/repositories/fcm_messaging_gateway.dart';
 import 'package:healthylife/features/notifications/domain/repositories/notification_repository.dart';
 import 'package:healthylife/features/notifications/domain/services/notification_account_coordinator.dart';
 import 'package:healthylife/features/notifications/presentation/controllers/notification_controller.dart';
@@ -352,6 +355,265 @@ void main() {
         ),
         throwsA(isA<NotificationConflictException>()),
       );
+    });
+
+    test('tích hợp FCM: tự đăng ký token, xử lý onTokenRefresh kèm retry thu hồi token cũ và chống trùng onForegroundMessage', () async {
+      final repo = InMemoryNotificationRepository(
+        seedWithSamples: true,
+        referenceDate: fixedNow,
+      );
+      final gateway = InMemoryLocalNotificationGateway(
+        permissionStatus: NotificationPermissionStatus.granted,
+      );
+      final fcmGateway = InMemoryFcmMessagingGateway(
+        currentToken: 'fcm-token-v1',
+      );
+      final coordinator = NotificationAccountCoordinator(
+        gateway: gateway,
+        fcmGateway: fcmGateway,
+        repositoryResolver: () => repo,
+        nowProvider: () => fixedNow,
+      );
+      addTearDown(() async {
+        coordinator.dispose();
+        await fcmGateway.dispose();
+      });
+
+      // 1. Khi phiên được cấp quyền -> tự động đăng ký token FCM v1
+      await coordinator.activateAuthorizedSession('user-fcm');
+      var tokens = await repo.getDeviceTokens('user-fcm');
+      expect(tokens, hasLength(1));
+      expect(tokens.single.token, 'fcm-token-v1');
+      expect(tokens.single.isActive, isTrue);
+
+      // 2. Xoay vòng token (onTokenRefresh) lúc mạng chập chờn không tắt được token cũ -> xếp hàng đợi retry
+      repo.nextDeactivateTokenError = const NotificationSyncException('Offline');
+      fcmGateway.emitTokenRefresh('fcm-token-v2');
+      await Future<void>.delayed(Duration.zero);
+
+      tokens = await repo.getDeviceTokens('user-fcm');
+      expect(
+        tokens.firstWhere((t) => t.token == 'fcm-token-v2').isActive,
+        isTrue,
+      );
+      expect(
+        tokens.firstWhere((t) => t.token == 'fcm-token-v1').isActive,
+        isTrue,
+      );
+      expect(coordinator.pendingDeactivationCount, 1);
+
+      // Mạng phục hồi -> handleAppResumed() tự retry thu hồi token cũ, giữ token mới hoạt động
+      await coordinator.handleAppResumed();
+      tokens = await repo.getDeviceTokens('user-fcm');
+      expect(
+        tokens.firstWhere((t) => t.token == 'fcm-token-v1').isActive,
+        isFalse,
+      );
+      expect(
+        tokens.firstWhere((t) => t.token == 'fcm-token-v2').isActive,
+        isTrue,
+      );
+      expect(coordinator.pendingDeactivationCount, 0);
+
+      // 3. Cầu nối FCM foreground qua NotificationDeduplicator chung với Local Notifications
+      final controller = NotificationController(
+        repository: repo,
+        gateway: gateway,
+        currentUserId: 'user-fcm',
+        accountCoordinator: coordinator,
+        nowProvider: () => fixedNow,
+      );
+      addTearDown(controller.dispose);
+      await controller.loadAll();
+
+      final approvedItem = controller.approvedItems.first;
+      final localSent = await controller.dispatchEventWithDeduplication(
+        item: approvedItem,
+        source: NotificationChannelSource.local,
+      );
+      expect(localSent, isTrue);
+      expect(gateway.shownReminders, hasLength(1));
+
+      // FCM bắn cùng mục lịch (trùng dedupeKey) -> bị chặn, không phát đúp
+      fcmGateway.emitForegroundMessage(
+        IncomingFcmMessage(
+          messageId: 'msg-dup-1',
+          ownerUid: 'user-fcm',
+          planId: approvedItem.planId,
+          itemId: approvedItem.itemId,
+          itemType: approvedItem.itemType,
+          scheduledAtUtc: approvedItem.startsAtUtc,
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(coordinator.suppressedFcmDuplicateCount, 1);
+      expect(gateway.shownReminders, hasLength(1));
+
+      // FCM thuộc tài khoản khác -> bị bỏ qua hoàn toàn
+      fcmGateway.emitForegroundMessage(
+        IncomingFcmMessage(
+          messageId: 'msg-foreign-1',
+          ownerUid: 'other-account',
+          itemId: 'foreign-item',
+          scheduledAtUtc: fixedNow,
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(gateway.shownReminders, hasLength(1));
+
+      // FCM sự kiện mới hợp lệ -> được phát với nội dung màn hình khóa trung tính an toàn
+      fcmGateway.emitForegroundMessage(
+        IncomingFcmMessage(
+          messageId: 'msg-new-1',
+          ownerUid: 'user-fcm',
+          planId: 'plan-server-1',
+          itemId: 'server-nudge-1',
+          itemType: ReminderItemType.habit,
+          scheduledAtUtc: fixedNow.add(const Duration(minutes: 5)),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(gateway.shownReminders, hasLength(2));
+      expect(
+        gateway.shownReminders.last.lockScreenBody,
+        NotificationPrivacyFormatter.neutralLockScreenBody,
+      );
+      expect(gateway.shownReminders.last.hideDetailsOnLockScreen, isTrue);
+
+      // 4. Khi rơi vào giờ yên lặng (23:00 Asia/Ho_Chi_Minh) -> chặn phát FCM foreground
+      final quietNow = tz.TZDateTime(
+        profileLocation('Asia/Ho_Chi_Minh')!,
+        2026,
+        11,
+        27,
+        23,
+        0,
+      ).toUtc();
+      final quietCoordinator = NotificationAccountCoordinator(
+        gateway: gateway,
+        fcmGateway: fcmGateway,
+        repositoryResolver: () => repo,
+        nowProvider: () => quietNow,
+      );
+      addTearDown(quietCoordinator.dispose);
+      await quietCoordinator.activateAuthorizedSession('user-fcm');
+      final shownInQuiet = await quietCoordinator.handleIncomingFcmMessage(
+        IncomingFcmMessage(
+          messageId: 'msg-quiet-1',
+          ownerUid: 'user-fcm',
+          itemId: 'quiet-item',
+          scheduledAtUtc: quietNow,
+        ),
+      );
+      expect(shownInQuiet, isFalse);
+      expect(gateway.shownReminders, hasLength(2));
+    });
+
+    test('hàng đợi retry thu hồi device_tokens khi offline phân vùng chặt theo tài khoản (an toàn RLS)', () async {
+      final repo = InMemoryNotificationRepository(
+        seedWithSamples: true,
+        referenceDate: fixedNow,
+      );
+      final gateway = InMemoryLocalNotificationGateway(
+        permissionStatus: NotificationPermissionStatus.granted,
+      );
+      final fcmGateway = InMemoryFcmMessagingGateway(
+        currentToken: 'tok-a-1',
+      );
+      final coordinator = NotificationAccountCoordinator(
+        gateway: gateway,
+        fcmGateway: fcmGateway,
+        repositoryResolver: () => repo,
+        nowProvider: () => fixedNow,
+      );
+      addTearDown(() async {
+        coordinator.dispose();
+        await fcmGateway.dispose();
+      });
+
+      await coordinator.activateAuthorizedSession('user-a');
+      expect((await repo.getDeviceTokens('user-a')).single.isActive, isTrue);
+
+      // Đăng xuất tài khoản A lúc mất mạng -> xóa token FCM cục bộ, xếp tác vụ thu hồi Supabase vào hàng đợi retry
+      repo.nextDeactivateTokenError = const NotificationSyncException(
+        'Mất kết nối mạng',
+      );
+      await coordinator.handleBeforeSignOut('user-a');
+
+      expect(gateway.scheduledReminders, isEmpty);
+      expect(fcmGateway.deleteTokenCallCount, 1);
+      expect(coordinator.pendingDeactivationCount, 1);
+      expect((await repo.getDeviceTokens('user-a')).single.isActive, isTrue);
+
+      // Tài khoản B đăng nhập lúc có mạng -> đăng ký token B nhưng KHÔNG được gửi/xóa nhầm hàng đợi của tài khoản A
+      await coordinator.activateAuthorizedSession('user-b');
+      expect((await repo.getDeviceTokens('user-b')).single.isActive, isTrue);
+      expect(coordinator.pendingDeactivationCount, 1);
+      expect(
+        coordinator.pendingDeactivations.single.ownerUid,
+        'user-a',
+      );
+
+      // Tài khoản B đăng xuất bình thường -> token B bị vô hiệu hóa, hàng đợi của A vẫn còn nguyên
+      await coordinator.handleBeforeSignOut('user-b');
+      expect((await repo.getDeviceTokens('user-b')).single.isActive, isFalse);
+      expect(coordinator.pendingDeactivationCount, 1);
+
+      // Tài khoản A đăng nhập lại lúc có mạng -> tự động retry thu hồi token cũ 'tok-a-1' trước, rồi đăng ký token mới
+      await coordinator.activateAuthorizedSession('user-a');
+      final tokensA = await repo.getDeviceTokens('user-a');
+      expect(
+        tokensA.firstWhere((t) => t.token == 'tok-a-1').isActive,
+        isFalse,
+      );
+      expect(
+        tokensA.where((t) => t.isActive),
+        hasLength(1),
+      );
+      expect(
+        tokensA.firstWhere((t) => t.isActive).token,
+        isNot('tok-a-1'),
+      );
+      expect(coordinator.pendingDeactivationCount, 0);
+    });
+
+    test('khôi phục nhắc lịch sau khởi động lại máy ở cấp toàn app mà không cần mở NotificationsPage', () async {
+      final repo = InMemoryNotificationRepository(
+        seedWithSamples: true,
+        referenceDate: fixedNow,
+      );
+      final gateway = InMemoryLocalNotificationGateway(
+        permissionStatus: NotificationPermissionStatus.granted,
+      );
+      final fcmGateway = InMemoryFcmMessagingGateway(
+        currentToken: 'tok-reboot-appwide',
+      );
+      final coordinator = NotificationAccountCoordinator(
+        gateway: gateway,
+        fcmGateway: fcmGateway,
+        repositoryResolver: () => repo,
+        nowProvider: () => fixedNow,
+      );
+      addTearDown(() async {
+        coordinator.dispose();
+        await fcmGateway.dispose();
+      });
+
+      // Không hề tạo NotificationController hay mở NotificationsPage
+      await coordinator.activateAuthorizedSession('user-appwide');
+      expect(gateway.scheduledReminders, hasLength(3));
+      expect(
+        (await repo.getDeviceTokens('user-appwide')).single.token,
+        'tok-reboot-appwide',
+      );
+
+      // Máy khởi động lại -> toàn bộ alarm cục bộ bị xóa
+      gateway.simulateDeviceReboot();
+      expect(gateway.scheduledReminders, isEmpty);
+
+      // Ứng dụng nhận AppLifecycleState.resumed ở cấp toàn app -> tự khôi phục đủ 3 nhắc đã duyệt
+      await coordinator.handleAppResumed();
+      expect(gateway.scheduledReminders, hasLength(3));
     });
   });
 }

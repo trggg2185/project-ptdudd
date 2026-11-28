@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:healthylife/features/auth/domain/auth_repository.dart';
 import 'package:healthylife/features/auth/presentation/auth_gate.dart';
+import 'package:healthylife/features/notifications/data/gateways/in_memory_fcm_messaging_gateway.dart';
 import 'package:healthylife/features/notifications/data/gateways/in_memory_local_notification_gateway.dart';
 import 'package:healthylife/features/notifications/data/repositories/in_memory_notification_repository.dart';
 import 'package:healthylife/features/notifications/domain/entities/scheduled_reminder.dart';
@@ -321,6 +322,84 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Nhắc lịch & Giờ yên lặng'), findsOneWidget);
+    });
+
+    testWidgets('AuthGate tự đăng ký FCM và khôi phục nhắc lịch toàn app khi có quyền mà không cần mở NotificationsPage', (
+      tester,
+    ) async {
+      final repo = InMemoryNotificationRepository(
+        seedWithSamples: true,
+        referenceDate: fixedNow,
+      );
+      final gateway = InMemoryLocalNotificationGateway(
+        permissionStatus: NotificationPermissionStatus.granted,
+      );
+      final fcmGateway = InMemoryFcmMessagingGateway(
+        currentToken: 'tok-authgate-appwide',
+      );
+      final coordinator = NotificationAccountCoordinator(
+        gateway: gateway,
+        fcmGateway: fcmGateway,
+        repositoryResolver: () => repo,
+        nowProvider: () => fixedNow,
+      );
+      final auth = _StubAuthRepository();
+      addTearDown(() async {
+        coordinator.dispose();
+        await fcmGateway.dispose();
+        await auth.changes.close();
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AuthGate(
+            auth: auth,
+            notificationsPageBuilder: (session) => NotificationsPage(
+              repository: repo,
+              gateway: gateway,
+              currentUserId: session.uid,
+              accountCoordinator: coordinator,
+              nowProvider: () => fixedNow,
+            ),
+            onSessionAuthorized: coordinator.activateAuthorizedSession,
+            onBeforeSignOut: coordinator.handleBeforeSignOut,
+            onAccountChanged: (prev, next) => coordinator.handleAccountChanged(
+              previousUid: prev,
+              nextUid: next,
+            ),
+          ),
+        ),
+      );
+
+      // 1. Đăng nhập nhưng chưa có claim role: authenticated -> chưa đăng ký FCM và chưa đặt nhắc
+      auth.changes.add(const AuthSession(uid: 'user-bg-1'));
+      await tester.pumpAndSettle();
+      expect(await repo.getDeviceTokens('user-bg-1'), isEmpty);
+      expect(gateway.scheduledReminders, isEmpty);
+
+      // 2. Cấp claim và bấm Kiểm tra lại quyền -> KHÔNG mở NotificationsPage nhưng vẫn đăng ký FCM và đặt đủ 3 nhắc
+      auth.allowed = true;
+      await tester.tap(find.text('Kiểm tra lại quyền'));
+      await tester.pumpAndSettle();
+
+      final tokens = await repo.getDeviceTokens('user-bg-1');
+      expect(tokens, hasLength(1));
+      expect(tokens.single.token, 'tok-authgate-appwide');
+      expect(tokens.single.isActive, isTrue);
+      expect(gateway.scheduledReminders, hasLength(3));
+
+      // 3. Mô phỏng máy khởi động lại khi người dùng chưa mở NotificationsPage -> resume ở cấp app tự khôi phục
+      gateway.simulateDeviceReboot();
+      expect(gateway.scheduledReminders, isEmpty);
+      await coordinator.handleAppResumed();
+      expect(gateway.scheduledReminders, hasLength(3));
+
+      // 4. Đăng xuất ngay trên màn hình phiên -> xóa token FCM cục bộ, hủy 3 nhắc và vô hiệu hóa device_tokens
+      await tester.tap(find.text('Đăng xuất'));
+      await tester.pumpAndSettle();
+      expect(gateway.scheduledReminders, isEmpty);
+      expect(fcmGateway.deleteTokenCallCount, 1);
+      expect((await repo.getDeviceTokens('user-bg-1')).single.isActive, isFalse);
     });
   });
 }

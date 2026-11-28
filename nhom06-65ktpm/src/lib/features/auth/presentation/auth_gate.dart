@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../domain/auth_repository.dart';
@@ -15,6 +17,7 @@ class AuthGate extends StatefulWidget {
     this.plannerPageBuilder,
     this.activityPageBuilder,
     this.notificationsPageBuilder,
+    this.onSessionAuthorized,
     this.onBeforeSignOut,
     this.onAccountChanged,
   });
@@ -27,6 +30,10 @@ class AuthGate extends StatefulWidget {
   final Widget Function(AuthSession)? plannerPageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
   final Widget Function(AuthSession)? notificationsPageBuilder;
+
+  /// Hook kích hoạt điều phối toàn app khi phiên đã xác minh claim `role: authenticated`
+  /// (ví dụ đăng ký FCM token, retry thu hồi token cũ và khôi phục lịch nhắc sau boot).
+  final Future<void> Function(String ownerUid)? onSessionAuthorized;
 
   /// Hook dọn tài nguyên tài khoản trước khi đăng xuất (ví dụ hủy nhắc lịch cục bộ và `device_tokens`).
   final Future<void> Function(String ownerUid)? onBeforeSignOut;
@@ -96,6 +103,7 @@ class _AuthGateState extends State<AuthGate> {
                 plannerPageBuilder: widget.plannerPageBuilder,
                 activityPageBuilder: widget.activityPageBuilder,
                 notificationsPageBuilder: widget.notificationsPageBuilder,
+                onSessionAuthorized: widget.onSessionAuthorized,
                 onBeforeSignOut: widget.onBeforeSignOut,
               );
       },
@@ -116,6 +124,7 @@ class _SessionNavigator extends StatefulWidget {
     required this.plannerPageBuilder,
     required this.activityPageBuilder,
     required this.notificationsPageBuilder,
+    required this.onSessionAuthorized,
     required this.onBeforeSignOut,
   });
 
@@ -128,6 +137,7 @@ class _SessionNavigator extends StatefulWidget {
   final Widget Function(AuthSession)? plannerPageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
   final Widget Function(AuthSession)? notificationsPageBuilder;
+  final Future<void> Function(String ownerUid)? onSessionAuthorized;
   final Future<void> Function(String ownerUid)? onBeforeSignOut;
 
   @override
@@ -154,6 +164,7 @@ class _SessionNavigatorState extends State<_SessionNavigator> {
             plannerPageBuilder: widget.plannerPageBuilder,
             activityPageBuilder: widget.activityPageBuilder,
             notificationsPageBuilder: widget.notificationsPageBuilder,
+            onSessionAuthorized: widget.onSessionAuthorized,
             onBeforeSignOut: widget.onBeforeSignOut,
           ),
         ),
@@ -173,6 +184,7 @@ class _SessionPage extends StatefulWidget {
     required this.plannerPageBuilder,
     required this.activityPageBuilder,
     required this.notificationsPageBuilder,
+    required this.onSessionAuthorized,
     required this.onBeforeSignOut,
   });
 
@@ -185,6 +197,7 @@ class _SessionPage extends StatefulWidget {
   final Widget Function(AuthSession)? plannerPageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
   final Widget Function(AuthSession)? notificationsPageBuilder;
+  final Future<void> Function(String ownerUid)? onSessionAuthorized;
   final Future<void> Function(String ownerUid)? onBeforeSignOut;
 
   @override
@@ -221,6 +234,15 @@ class _SessionPageState extends State<_SessionPage> {
   Future<({bool allowed, String message})> _checkAccess() async {
     try {
       final allowed = await widget.auth.hasDataAccess(refresh: true);
+      if (allowed && mounted) {
+        if (widget.onSessionAuthorized case final activate?) {
+          unawaited(
+            activate(widget.session.uid).catchError((Object _) {
+              // Không làm gián đoạn luồng xác minh quyền nếu đồng bộ nền tạm lỗi.
+            }),
+          );
+        }
+      }
       return (
         allowed: allowed,
         message: allowed ? 'Tài khoản đã được cấp quyền truy cập dữ liệu.' : 'Tài khoản đang chờ quyền truy cập dữ liệu. Liên hệ nhóm trưởng để cấp quyền, rồi kiểm tra lại.',

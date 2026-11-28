@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -15,10 +17,12 @@ import 'features/habits/data/repositories/in_memory_habit_repository.dart';
 import 'features/habits/data/repositories/supabase_habit_repository.dart';
 import 'features/habits/domain/repositories/habit_repository.dart';
 import 'features/habits/presentation/pages/habits_page.dart';
+import 'features/notifications/data/gateways/firebase_messaging_gateway.dart';
 import 'features/notifications/data/gateways/flutter_local_notifications_gateway.dart';
 import 'features/notifications/data/gateways/in_memory_local_notification_gateway.dart';
 import 'features/notifications/data/repositories/in_memory_notification_repository.dart';
 import 'features/notifications/data/repositories/supabase_notification_repository.dart';
+import 'features/notifications/domain/repositories/fcm_messaging_gateway.dart';
 import 'features/notifications/domain/repositories/local_notification_gateway.dart';
 import 'features/notifications/domain/repositories/notification_repository.dart';
 import 'features/notifications/domain/services/notification_account_coordinator.dart';
@@ -118,6 +122,7 @@ class HealthyLifeApp extends StatefulWidget {
   final SleepRepository? sleepRepository;
   final NotificationRepository? notificationRepository;
   final LocalNotificationGateway? notificationGateway;
+  final FcmMessagingGateway? fcmMessagingGateway;
 
   const HealthyLifeApp({
     super.key,
@@ -125,21 +130,29 @@ class HealthyLifeApp extends StatefulWidget {
     this.sleepRepository,
     this.notificationRepository,
     this.notificationGateway,
+    this.fcmMessagingGateway,
   });
 
   @override
   State<HealthyLifeApp> createState() => _HealthyLifeAppState();
 }
 
-class _HealthyLifeAppState extends State<HealthyLifeApp> {
+class _HealthyLifeAppState extends State<HealthyLifeApp>
+    with WidgetsBindingObserver {
   late Future<AuthRepository?> _startup = _start();
   late final _mealDatabase = LocalDatabase();
   late final LocalNotificationGateway _notificationGateway =
       widget.notificationGateway ?? FlutterLocalNotificationsGateway();
+  late final FcmMessagingGateway _fcmMessagingGateway =
+      widget.fcmMessagingGateway ?? FirebaseMessagingGateway();
   late final NotificationAccountCoordinator _notificationAccountCoordinator =
       NotificationAccountCoordinator(
         gateway: _notificationGateway,
+        fcmGateway: _fcmMessagingGateway,
         repositoryResolver: () {
+          if (widget.notificationRepository != null) {
+            return widget.notificationRepository;
+          }
           try {
             if (Supabase.instance.isInitialized) {
               return SupabaseNotificationRepository();
@@ -148,6 +161,26 @@ class _HealthyLifeAppState extends State<HealthyLifeApp> {
           return null;
         },
       );
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _notificationAccountCoordinator.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_notificationAccountCoordinator.handleAppResumed());
+    }
+  }
 
   Future<AuthRepository?> _start() async {
     try {
@@ -299,6 +332,8 @@ class _HealthyLifeAppState extends State<HealthyLifeApp> {
                 currentUserId: session.uid,
                 accountCoordinator: _notificationAccountCoordinator,
               ),
+              onSessionAuthorized:
+                  _notificationAccountCoordinator.activateAuthorizedSession,
               onBeforeSignOut:
                   _notificationAccountCoordinator.handleBeforeSignOut,
               onAccountChanged: (previousUid, nextUid) =>

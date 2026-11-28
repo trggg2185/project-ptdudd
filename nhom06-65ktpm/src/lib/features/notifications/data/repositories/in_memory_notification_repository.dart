@@ -16,11 +16,15 @@ class InMemoryNotificationRepository implements NotificationRepository {
   Duration simulatedDelay;
   Exception? nextError;
 
+  /// Mô phỏng lỗi mạng riêng cho lần gọi `deactivateDeviceTokens` kế tiếp (test retry khi offline).
+  Exception? nextDeactivateTokenError;
+
   InMemoryNotificationRepository({
     this.seedWithSamples = false,
     this.referenceDate,
     this.simulatedDelay = Duration.zero,
     this.nextError,
+    this.nextDeactivateTokenError,
   });
 
   Future<void> _maybeDelayOrFail() async {
@@ -140,6 +144,11 @@ class InMemoryNotificationRepository implements NotificationRepository {
   @override
   Future<void> deactivateDeviceTokens(String ownerUid, {String? token}) async {
     await _maybeDelayOrFail();
+    if (nextDeactivateTokenError != null) {
+      final err = nextDeactivateTokenError!;
+      nextDeactivateTokenError = null;
+      throw err;
+    }
     final map = _tokensByOwner[ownerUid];
     if (map == null) return;
     if (token != null) {

@@ -179,6 +179,7 @@ class WeeklyActivityInsights {
 
   final int manualSessionCount;
   final int gpsSessionCount;
+  final int unknownSourceSessionCount;
   final List<DailyActivitySummary> dailySummaries;
   final Set<InsightDataSource> dataSources;
 
@@ -190,6 +191,7 @@ class WeeklyActivityInsights {
     required this.unloggedDaysCount,
     required this.manualSessionCount,
     required this.gpsSessionCount,
+    this.unknownSourceSessionCount = 0,
     required this.dailySummaries,
     required this.dataSources,
   });

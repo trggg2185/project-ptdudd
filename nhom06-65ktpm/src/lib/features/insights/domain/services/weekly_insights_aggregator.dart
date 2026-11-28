@@ -411,6 +411,7 @@ class WeeklyInsightsAggregator {
     var totalDistance = 0.0;
     var manualCount = 0;
     var gpsCount = 0;
+    var unknownSourceCount = 0;
     final allSources = <InsightDataSource>{};
 
     for (final session in uniqueSessions.values) {
@@ -425,10 +426,15 @@ class WeeklyInsightsAggregator {
 
       final source = _resolveActivitySource(session);
       allSources.add(source);
-      if (source == InsightDataSource.deviceGps) {
-        gpsCount++;
-      } else {
-        manualCount++;
+      switch (source) {
+        case InsightDataSource.deviceGps:
+          gpsCount++;
+        case InsightDataSource.manualInput:
+          manualCount++;
+        case InsightDataSource.unknownSource:
+        case InsightDataSource.selfReported:
+        case InsightDataSource.cameraOrGallery:
+          unknownSourceCount++;
       }
     }
 
@@ -470,15 +476,18 @@ class WeeklyInsightsAggregator {
       unloggedDaysCount: unloggedDays,
       manualSessionCount: manualCount,
       gpsSessionCount: gpsCount,
+      unknownSourceSessionCount: unknownSourceCount,
       dailySummaries: List<DailyActivitySummary>.unmodifiable(dailySummaries),
       dataSources: Set<InsightDataSource>.unmodifiable(allSources),
     );
   }
 
   static InsightDataSource _resolveActivitySource(ActivitySession session) {
-    return session.resolvedSource == ActivityInputSource.gps
-        ? InsightDataSource.deviceGps
-        : InsightDataSource.manualInput;
+    return switch (session.resolvedSource) {
+      ActivityInputSource.gps => InsightDataSource.deviceGps,
+      ActivityInputSource.manual => InsightDataSource.manualInput,
+      ActivityInputSource.unknown => InsightDataSource.unknownSource,
+    };
   }
 
   WeeklySleepInsights _aggregateSleep({

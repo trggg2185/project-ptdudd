@@ -66,7 +66,8 @@ nhom06-65ktpm/
    - Tách riêng 4 trạng thái thói quen: **Hoàn thành**, **Bỏ qua có lý do** (không phá streak), **Không hoàn thành** (tự đánh dấu thất bại rõ ràng) và **Chưa ghi nhận** (`unlogged` / `pendingToday`).
    - Tuần chưa có dữ liệu hiển thị trạng thái **Chưa ghi nhận**, tuyệt đối không ép thành `0%` hay `0 giờ ngủ`; trung bình giấc ngủ chỉ chia trên số ngày thực sự đã tự khai báo.
 3. **Hiển thị nguồn dữ liệu & không gọi là "điểm sức khỏe":**
-   - Mọi thẻ tổng kết đều ghi tường minh nguồn dữ liệu: `Nhập tay`, `Thiết bị (GPS trong phiên)`, `Tự khai báo (không đo bằng cảm biến hay thời gian tắt màn hình)`, `Camera / Thư viện ảnh`.
+   - Mọi thẻ tổng kết đều ghi tường minh nguồn dữ liệu: `Nhập tay`, `Tự khai báo (không đo bằng cảm biến hay thời gian tắt màn hình)`, `Thiết bị (GPS trong phiên)`, `Camera / Thư viện ảnh`, và `Nguồn chưa xác định (bản ghi cũ)` cho các bản ghi vận động cũ có `estimated_distance_meters = 0`, `route_saved = false` trước migration.
+   - Migration [`20261128000007_activity_input_source.sql`](../../../supabase/migrations/20261128000007_activity_input_source.sql) bổ sung cột nullable `input_source` (`'manual'` / `'gps'`) trên `public.activity_sessions` để lưu tường minh nguồn cho bản ghi mới (có fallback nếu cloud chưa áp dụng migration).
    - Có biểu ngữ lưu ý phi y khoa ở đầu màn hình và hàm bảo vệ `InsightsDisplayFormatter.containsForbiddenHealthScoreClaim`; widget test quét toàn bộ cây văn bản trên màn hình xác nhận không có tuyên bố *"điểm sức khỏe"* hay *"chấm điểm sức khỏe"*.
 4. **Responsive, an toàn phiên & không chạm `main.dart`:**
    - Tự chuyển bố cục **1 cột** trên màn hình hẹp (`< 760px`, Android) và **2 cột** trên màn hình rộng (`>= 760px`, Web).

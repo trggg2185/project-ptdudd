@@ -121,6 +121,7 @@ class SampleWeeklyInsightsFixture {
             recordedAt: DateTime(2026, 11, 23, 6, 30),
           ),
         ],
+        inputSource: ActivityInputSource.gps,
       ),
       // Buổi tập nhập tay (không GPS)
       ActivitySession(
@@ -134,6 +135,7 @@ class SampleWeeklyInsightsFixture {
         startedAt: DateTime(2026, 11, 26, 19, 0),
         endedAt: DateTime(2026, 11, 26, 19, 20),
         route: const [],
+        inputSource: ActivityInputSource.manual,
       ),
     ];
 

@@ -67,6 +67,11 @@ class InsightsDisplayFormatter {
         '${InsightDataSource.manualInput.label}: ${activity.manualSessionCount} buổi',
       );
     }
+    if (activity.unknownSourceSessionCount > 0) {
+      parts.add(
+        '${InsightDataSource.unknownSource.label}: ${activity.unknownSourceSessionCount} buổi',
+      );
+    }
     return 'Nguồn: ${parts.join(' • ')}';
   }
 

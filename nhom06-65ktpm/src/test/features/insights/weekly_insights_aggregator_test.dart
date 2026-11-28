@@ -528,8 +528,21 @@ void main() {
       );
     });
 
-    test('SupabaseActivityRepository bảo toàn nguồn phiên GPS 0 m và phiên nhập tay qua HTTP', () async {
-      final storedRows = <Map<String, dynamic>>[];
+    test('SupabaseActivityRepository phân biệt bản ghi nhập tay cũ (chưa rõ nguồn) song song với phiên GPS 0 m và nhập tay mới qua HTTP', () async {
+      const ownerUid = 'uid-supabase-gps-zero';
+      final legacyManualRow = <String, dynamic>{
+        'id': 'legacy-manual-001',
+        'owner_uid': ownerUid,
+        'activity_name': 'Đi bộ nhập tay phiên bản cũ',
+        'started_at': DateTime.utc(2026, 11, 25, 1, 0).toIso8601String(),
+        'ended_at': DateTime.utc(2026, 11, 25, 1, 20).toIso8601String(),
+        'duration_seconds': 1200,
+        'estimated_distance_meters': 0,
+        'feeling': 'Ổn',
+        'route_saved': false,
+        // Không có khóa `input_source` như bản ghi cũ trước migration.
+      };
+      final storedRows = <Map<String, dynamic>>[legacyManualRow];
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       addTearDown(() => server.close(force: true));
 
@@ -572,8 +585,43 @@ void main() {
       );
       addTearDown(() => client.dispose());
 
-      const ownerUid = 'uid-supabase-gps-zero';
       final repo = SupabaseActivityRepository(client: client);
+
+      // 1. Đọc riêng bản ghi nhập tay cũ (estimated_distance_meters: 0, route_saved: false, không có input_source):
+      //    tuyệt đối KHÔNG được đếm thành GPS (gpsSessionCount == 0), xếp vào nguồn chưa xác định.
+      final legacyOnly = await repo.getSessions(ownerUid: ownerUid);
+      expect(legacyOnly, hasLength(1));
+      expect(legacyOnly.single.resolvedSource, ActivityInputSource.unknown);
+
+      final legacySummary = aggregator.aggregate(
+        ownerUid: ownerUid,
+        habits: const [],
+        habitLogs: const [],
+        activitySessions: legacyOnly,
+        sleepLogs: const [],
+        referenceDate: DateTime(2026, 11, 25),
+      );
+      expect(legacySummary.activity.sessionCount, 1);
+      expect(legacySummary.activity.gpsSessionCount, 0);
+      expect(legacySummary.activity.manualSessionCount, 0);
+      expect(legacySummary.activity.unknownSourceSessionCount, 1);
+      expect(
+        legacySummary.activity.dataSources,
+        equals({InsightDataSource.unknownSource}),
+      );
+      expect(
+        InsightsDisplayFormatter.formatActivitySources(legacySummary.activity),
+        'Nguồn: Nguồn chưa xác định (bản ghi cũ): 1 buổi',
+      );
+      expect(
+        InsightsDisplayFormatter.formatEstimatedDistance(
+          legacySummary.activity.totalEstimatedDistanceMeters,
+          hasGpsSession: legacySummary.activity.gpsSessionCount > 0,
+        ),
+        'Không có quãng đường GPS',
+      );
+
+      // 2. Ghi thêm 1 phiên GPS 0 m mới và 1 phiên nhập tay mới (có input_source tường minh)
       final controller = ActivityController(
         repository: repo,
         ownerUid: ownerUid,
@@ -590,12 +638,14 @@ void main() {
         date: DateTime(2026, 11, 25, 19, 0),
       );
 
-      // Xác nhận payload gửi lên Supabase tách biệt 0 (GPS) và null (nhập tay)
-      expect(storedRows, hasLength(2));
-      expect(storedRows[0]['estimated_distance_meters'], 0);
-      expect(storedRows[1]['estimated_distance_meters'], isNull);
+      // Xác nhận payload mới gửi input_source tường minh ('gps' vs 'manual')
+      expect(storedRows, hasLength(3));
+      expect(storedRows[1]['input_source'], 'gps');
+      expect(storedRows[1]['estimated_distance_meters'], 0);
+      expect(storedRows[2]['input_source'], 'manual');
+      expect(storedRows[2]['estimated_distance_meters'], 0);
 
-      // Đọc lại từ SupabaseActivityRepository và tổng hợp tuần
+      // 3. Đọc đồng thời cả 3 bản ghi (cũ + GPS 0 m mới + nhập tay mới) và tổng hợp tuần
       final reloaded = await repo.getSessions(ownerUid: ownerUid);
       final summary = aggregator.aggregate(
         ownerUid: ownerUid,
@@ -606,9 +656,85 @@ void main() {
         referenceDate: DateTime(2026, 11, 25),
       );
 
-      expect(summary.activity.sessionCount, 2);
+      expect(summary.activity.sessionCount, 3);
       expect(summary.activity.gpsSessionCount, 1);
       expect(summary.activity.manualSessionCount, 1);
+      expect(summary.activity.unknownSourceSessionCount, 1);
+      expect(
+        summary.activity.dataSources,
+        equals({
+          InsightDataSource.deviceGps,
+          InsightDataSource.manualInput,
+          InsightDataSource.unknownSource,
+        }),
+      );
+    });
+
+    test('SupabaseActivityRepository fallback an toàn khi cloud chưa áp dụng migration input_source (PGRST204)', () async {
+      final receivedPayloads = <Map<String, dynamic>>[];
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+
+      server.listen((request) async {
+        final path = request.uri.path;
+        if (request.method == 'POST' &&
+            path.endsWith('/rest/v1/activity_sessions')) {
+          final body = await utf8.decoder.bind(request).join();
+          final decoded = Map<String, dynamic>.from(jsonDecode(body) as Map);
+          receivedPayloads.add(decoded);
+          if (decoded.containsKey('input_source')) {
+            request.response
+              ..statusCode = HttpStatus.badRequest
+              ..headers.contentType = ContentType.json
+              ..write(
+                jsonEncode({
+                  'code': 'PGRST204',
+                  'message':
+                      "Could not find the 'input_source' column of 'activity_sessions' in the schema cache",
+                }),
+              );
+            await request.response.close();
+            return;
+          }
+          request.response
+            ..statusCode = HttpStatus.created
+            ..headers.contentType = ContentType.json
+            ..write(jsonEncode(decoded));
+          await request.response.close();
+          return;
+        }
+        request.response
+          ..statusCode = HttpStatus.ok
+          ..headers.contentType = ContentType.json
+          ..write('[]');
+        await request.response.close();
+      });
+
+      final client = SupabaseClient(
+        'http://${server.address.address}:${server.port}',
+        'test-anon-key',
+      );
+      addTearDown(() => client.dispose());
+
+      final repo = SupabaseActivityRepository(client: client);
+      final session = ActivitySession(
+        id: 'fallback-gps-0m',
+        ownerUid: 'uid-pre-migration',
+        activityName: 'Đi bộ',
+        durationSeconds: 600,
+        estimatedDistanceMeters: 0,
+        feeling: '',
+        routeSaved: false,
+        startedAt: DateTime.utc(2026, 11, 25, 6, 0),
+        endedAt: DateTime.utc(2026, 11, 25, 6, 10),
+        route: const [],
+        inputSource: ActivityInputSource.gps,
+      );
+
+      await repo.saveSession(session);
+      expect(receivedPayloads, hasLength(2));
+      expect(receivedPayloads[0]['input_source'], 'gps');
+      expect(receivedPayloads[1].containsKey('input_source'), isFalse);
     });
   });
 }

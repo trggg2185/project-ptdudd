@@ -28,7 +28,7 @@ class GpsPoint {
 
 enum ActivityStatus { idle, recording, paused, stopped }
 
-enum ActivityInputSource { manual, gps }
+enum ActivityInputSource { manual, gps, unknown }
 
 class ActivitySession {
   final String id;
@@ -57,16 +57,26 @@ class ActivitySession {
     this.inputSource,
   });
 
-  /// Phân giải nguồn ghi nhận vận động: ưu tiên [inputSource] tường minh
-  /// (phân biệt chính xác phiên GPS 0 m không lưu tuyến với phiên nhập tay);
-  /// chỉ suy luận ngược cho bản ghi cũ không có [inputSource].
+  static ActivityInputSource? parseInputSource(Object? raw) {
+    return switch (raw) {
+      'manual' => ActivityInputSource.manual,
+      'gps' => ActivityInputSource.gps,
+      _ => null,
+    };
+  }
+
+  /// Phân giải nguồn ghi nhận vận động:
+  /// - Ưu tiên [inputSource] tường minh (`manual` / `gps` / `unknown`).
+  /// - Với bản ghi cũ chưa lưu `input_source`: chỉ coi là `gps` khi có bằng chứng
+  ///   tuyến đường hoặc quãng đường GPS > 0; nếu `0 m` và không lưu tuyến thì trả
+  ///   `unknown` để không đếm nhầm bản ghi nhập tay cũ thành phiên GPS.
   ActivityInputSource get resolvedSource {
     final explicit = inputSource;
     if (explicit != null) return explicit;
     if (route.isNotEmpty || routeSaved || estimatedDistanceMeters > 0) {
       return ActivityInputSource.gps;
     }
-    return ActivityInputSource.manual;
+    return ActivityInputSource.unknown;
   }
 
   Map<String, dynamic> toJson() => {

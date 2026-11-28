@@ -6,7 +6,8 @@ enum InsightDataSource {
   manualInput('manual_input', 'Nhập tay'),
   selfReported('self_reported', 'Tự khai báo'),
   deviceGps('device_gps', 'Thiết bị (GPS trong phiên)'),
-  cameraOrGallery('camera_or_gallery', 'Camera / Thư viện ảnh');
+  cameraOrGallery('camera_or_gallery', 'Camera / Thư viện ảnh'),
+  unknownSource('unknown_source', 'Nguồn chưa xác định (bản ghi cũ)');
 
   const InsightDataSource(this.code, this.label);
 

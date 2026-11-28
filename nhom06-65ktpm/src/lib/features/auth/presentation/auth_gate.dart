@@ -12,6 +12,7 @@ class AuthGate extends StatefulWidget {
     this.sleepPageBuilder,
     this.nutritionPageBuilder,
     this.profilePageBuilder,
+    this.plannerPageBuilder,
     this.activityPageBuilder,
     this.notificationsPageBuilder,
     this.onBeforeSignOut,
@@ -23,6 +24,7 @@ class AuthGate extends StatefulWidget {
   final Widget Function(AuthSession)? sleepPageBuilder;
   final Widget Function(AuthSession)? nutritionPageBuilder;
   final Widget Function(AuthSession)? profilePageBuilder;
+  final Widget Function(AuthSession)? plannerPageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
   final Widget Function(AuthSession)? notificationsPageBuilder;
 
@@ -91,6 +93,7 @@ class _AuthGateState extends State<AuthGate> {
                 sleepPageBuilder: widget.sleepPageBuilder,
                 nutritionPageBuilder: widget.nutritionPageBuilder,
                 profilePageBuilder: widget.profilePageBuilder,
+                plannerPageBuilder: widget.plannerPageBuilder,
                 activityPageBuilder: widget.activityPageBuilder,
                 notificationsPageBuilder: widget.notificationsPageBuilder,
                 onBeforeSignOut: widget.onBeforeSignOut,
@@ -110,6 +113,7 @@ class _SessionNavigator extends StatefulWidget {
     required this.sleepPageBuilder,
     required this.nutritionPageBuilder,
     required this.profilePageBuilder,
+    required this.plannerPageBuilder,
     required this.activityPageBuilder,
     required this.notificationsPageBuilder,
     required this.onBeforeSignOut,
@@ -121,6 +125,7 @@ class _SessionNavigator extends StatefulWidget {
   final Widget Function(AuthSession)? sleepPageBuilder;
   final Widget Function(AuthSession)? nutritionPageBuilder;
   final Widget Function(AuthSession)? profilePageBuilder;
+  final Widget Function(AuthSession)? plannerPageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
   final Widget Function(AuthSession)? notificationsPageBuilder;
   final Future<void> Function(String ownerUid)? onBeforeSignOut;
@@ -146,6 +151,7 @@ class _SessionNavigatorState extends State<_SessionNavigator> {
             sleepPageBuilder: widget.sleepPageBuilder,
             nutritionPageBuilder: widget.nutritionPageBuilder,
             profilePageBuilder: widget.profilePageBuilder,
+            plannerPageBuilder: widget.plannerPageBuilder,
             activityPageBuilder: widget.activityPageBuilder,
             notificationsPageBuilder: widget.notificationsPageBuilder,
             onBeforeSignOut: widget.onBeforeSignOut,
@@ -164,6 +170,7 @@ class _SessionPage extends StatefulWidget {
     required this.sleepPageBuilder,
     required this.nutritionPageBuilder,
     required this.profilePageBuilder,
+    required this.plannerPageBuilder,
     required this.activityPageBuilder,
     required this.notificationsPageBuilder,
     required this.onBeforeSignOut,
@@ -175,6 +182,7 @@ class _SessionPage extends StatefulWidget {
   final Widget Function(AuthSession)? sleepPageBuilder;
   final Widget Function(AuthSession)? nutritionPageBuilder;
   final Widget Function(AuthSession)? profilePageBuilder;
+  final Widget Function(AuthSession)? plannerPageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
   final Widget Function(AuthSession)? notificationsPageBuilder;
   final Future<void> Function(String ownerUid)? onBeforeSignOut;
@@ -268,6 +276,7 @@ class _SessionPageState extends State<_SessionPage> {
                         ),
                         for (final entry in {
                           'Mở hồ sơ và lịch': widget.profilePageBuilder,
+                          'Mở lịch tuần': widget.plannerPageBuilder,
                           'Mở thói quen': widget.habitsPageBuilder,
                           'Mở nhật ký ngủ': widget.sleepPageBuilder,
                           'Nhật ký vận động': widget.activityPageBuilder,

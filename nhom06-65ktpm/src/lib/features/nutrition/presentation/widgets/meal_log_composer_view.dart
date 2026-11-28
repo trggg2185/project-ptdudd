@@ -18,6 +18,7 @@ class MealLogComposerView extends StatefulWidget {
   final RecommendationProfile profile;
   final MealNutritionUseCase useCase;
   final String mealType;
+  final String? initialMealName;
   final bool aiPhotoLabelConsentGranted;
   final Future<bool> Function()? syncLogs;
 
@@ -27,6 +28,7 @@ class MealLogComposerView extends StatefulWidget {
     required this.profile,
     required this.useCase,
     this.mealType = 'lunch',
+    this.initialMealName,
     this.aiPhotoLabelConsentGranted = false,
     this.syncLogs,
   });
@@ -37,7 +39,9 @@ class MealLogComposerView extends StatefulWidget {
 
 class _MealLogComposerViewState extends State<MealLogComposerView> {
   final _formKey = GlobalKey<FormState>();
-  final _mealNameController = TextEditingController();
+  late final _mealNameController = TextEditingController(
+    text: widget.initialMealName,
+  );
   final _noteController = TextEditingController();
 
   MealSuggestionSession? _session;
@@ -64,8 +68,9 @@ class _MealLogComposerViewState extends State<MealLogComposerView> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.ownerUid != widget.ownerUid ||
         oldWidget.mealType != widget.mealType ||
+        oldWidget.initialMealName != widget.initialMealName ||
         oldWidget.profile != widget.profile) {
-      _mealNameController.clear();
+      _mealNameController.text = widget.initialMealName ?? '';
       _noteController.clear();
       _preparedPhoto = null;
       _optionalLabelResult = null;

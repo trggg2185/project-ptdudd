@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/backend.dart';
 import 'core/local_database.dart';
+import 'core/privacy_service.dart';
 import 'features/activity/data/repositories/in_memory_activity_repository.dart';
 import 'features/activity/data/repositories/supabase_activity_repository.dart';
 import 'features/activity/domain/repositories/activity_repository.dart';
@@ -341,6 +342,14 @@ class _HealthyLifeAppState extends State<HealthyLifeApp>
                 gateway: _notificationGateway,
                 currentUserId: session.uid,
                 accountCoordinator: _notificationAccountCoordinator,
+              ),
+              privacyServiceBuilder: (session) => PrivacyService(
+                client: Supabase.instance.client,
+                localDatabase:
+                    !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+                    ? _mealDatabase
+                    : null,
+                currentOwnerUid: () => session.uid,
               ),
               onSessionAuthorized:
                   _notificationAccountCoordinator.activateAuthorizedSession,

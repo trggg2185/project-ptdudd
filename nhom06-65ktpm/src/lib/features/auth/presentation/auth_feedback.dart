@@ -16,5 +16,7 @@ String authErrorMessage(Object? error) => switch (error) {
   AuthFailure.sessionExpired => 'Phiên đã hết hạn. Hãy đăng nhập lại.',
   AuthFailure.awaitingDataAccess =>
     'Tài khoản đang chờ quyền truy cập dữ liệu.',
+  AuthFailure.requiresRecentLogin =>
+    'Cần đăng nhập lại gần đây trước khi xóa tài khoản.',
   _ => 'Không thể hoàn tất thao tác. Vui lòng thử lại.',
 };

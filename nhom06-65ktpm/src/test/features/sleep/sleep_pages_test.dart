@@ -509,4 +509,7 @@ class _StubAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async => changes.add(null);
+
+  @override
+  Future<void> deleteAccount() async => changes.add(null);
 }

@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../../../core/privacy_service.dart';
 import '../domain/auth_repository.dart';
 import 'auth_feedback.dart';
 import 'sign_in_page.dart';
@@ -16,6 +18,7 @@ class AuthGate extends StatefulWidget {
     this.profilePageBuilder,
     this.plannerPageBuilder,
     this.activityPageBuilder,
+    this.privacyServiceBuilder,
     this.notificationsPageBuilder,
     this.onSessionAuthorized,
     this.onBeforeSignOut,
@@ -29,6 +32,7 @@ class AuthGate extends StatefulWidget {
   final Widget Function(AuthSession)? profilePageBuilder;
   final Widget Function(AuthSession)? plannerPageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
+  final PrivacyService Function(AuthSession)? privacyServiceBuilder;
   final Widget Function(AuthSession)? notificationsPageBuilder;
 
   /// Hook kích hoạt điều phối toàn app khi phiên đã xác minh claim `role: authenticated`
@@ -102,6 +106,7 @@ class _AuthGateState extends State<AuthGate> {
                 profilePageBuilder: widget.profilePageBuilder,
                 plannerPageBuilder: widget.plannerPageBuilder,
                 activityPageBuilder: widget.activityPageBuilder,
+                privacyServiceBuilder: widget.privacyServiceBuilder,
                 notificationsPageBuilder: widget.notificationsPageBuilder,
                 onSessionAuthorized: widget.onSessionAuthorized,
                 onBeforeSignOut: widget.onBeforeSignOut,
@@ -123,6 +128,7 @@ class _SessionNavigator extends StatefulWidget {
     required this.profilePageBuilder,
     required this.plannerPageBuilder,
     required this.activityPageBuilder,
+    required this.privacyServiceBuilder,
     required this.notificationsPageBuilder,
     required this.onSessionAuthorized,
     required this.onBeforeSignOut,
@@ -136,6 +142,7 @@ class _SessionNavigator extends StatefulWidget {
   final Widget Function(AuthSession)? profilePageBuilder;
   final Widget Function(AuthSession)? plannerPageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
+  final PrivacyService Function(AuthSession)? privacyServiceBuilder;
   final Widget Function(AuthSession)? notificationsPageBuilder;
   final Future<void> Function(String ownerUid)? onSessionAuthorized;
   final Future<void> Function(String ownerUid)? onBeforeSignOut;
@@ -163,6 +170,7 @@ class _SessionNavigatorState extends State<_SessionNavigator> {
             profilePageBuilder: widget.profilePageBuilder,
             plannerPageBuilder: widget.plannerPageBuilder,
             activityPageBuilder: widget.activityPageBuilder,
+            privacyServiceBuilder: widget.privacyServiceBuilder,
             notificationsPageBuilder: widget.notificationsPageBuilder,
             onSessionAuthorized: widget.onSessionAuthorized,
             onBeforeSignOut: widget.onBeforeSignOut,
@@ -183,6 +191,7 @@ class _SessionPage extends StatefulWidget {
     required this.profilePageBuilder,
     required this.plannerPageBuilder,
     required this.activityPageBuilder,
+    required this.privacyServiceBuilder,
     required this.notificationsPageBuilder,
     required this.onSessionAuthorized,
     required this.onBeforeSignOut,
@@ -196,6 +205,7 @@ class _SessionPage extends StatefulWidget {
   final Widget Function(AuthSession)? profilePageBuilder;
   final Widget Function(AuthSession)? plannerPageBuilder;
   final Widget Function(AuthSession)? activityPageBuilder;
+  final PrivacyService Function(AuthSession)? privacyServiceBuilder;
   final Widget Function(AuthSession)? notificationsPageBuilder;
   final Future<void> Function(String ownerUid)? onSessionAuthorized;
   final Future<void> Function(String ownerUid)? onBeforeSignOut;
@@ -207,7 +217,10 @@ class _SessionPage extends StatefulWidget {
 class _SessionPageState extends State<_SessionPage> {
   late Future<({bool allowed, String message})> _dataAccess = _checkAccess();
   bool _signingOut = false;
+  bool _privacyBusy = false;
+  bool _privacyAllowed = false;
   String? _signOutError;
+  String? _privacyMessage;
 
   Future<void> _signOut() async {
     if (_signingOut) return;
@@ -231,9 +244,92 @@ class _SessionPageState extends State<_SessionPage> {
     }
   }
 
+  Future<void> _exportData() async {
+    final builder = widget.privacyServiceBuilder;
+    if (builder == null || _privacyBusy) return;
+    setState(() {
+      _privacyBusy = true;
+      _privacyMessage = null;
+    });
+    try {
+      final exported = await builder(widget.session).exportMyData();
+      await Clipboard.setData(ClipboardData(text: exported));
+      if (mounted) {
+        setState(
+          () => _privacyMessage = 'Đã sao chép dữ liệu xuất ra clipboard.',
+        );
+      }
+    } on PrivacyException catch (error) {
+      if (mounted) setState(() => _privacyMessage = error.message);
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _privacyMessage = 'Không thể xuất dữ liệu. Hãy thử lại.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _privacyBusy = false);
+    }
+  }
+
+  Future<void> _deleteData() async {
+    final builder = widget.privacyServiceBuilder;
+    if (builder == null || _privacyBusy) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      useRootNavigator: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Xóa tài khoản và dữ liệu?'),
+        content: const Text(
+          'Thao tác này xóa dữ liệu cloud, ảnh, tuyến, token và tài khoản đăng nhập. Không thể hoàn tác.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _privacyBusy = true;
+      _privacyMessage = null;
+    });
+    var cloudDeleted = false;
+    try {
+      await builder(widget.session).deleteMyData();
+      cloudDeleted = true;
+      await widget.auth.deleteAccount();
+      if (mounted) {
+        setState(() => _privacyMessage = 'Đã xóa dữ liệu và tài khoản.');
+      }
+    } on PrivacyException catch (error) {
+      if (mounted) setState(() => _privacyMessage = error.message);
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _privacyMessage = cloudDeleted
+              ? 'Dữ liệu cloud đã được xóa, nhưng tài khoản chưa xóa: ${authErrorMessage(error)}'
+              : authErrorMessage(error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _privacyBusy = false);
+    }
+  }
+
   Future<({bool allowed, String message})> _checkAccess() async {
     try {
       final allowed = await widget.auth.hasDataAccess(refresh: true);
+      if (mounted) {
+        setState(() => _privacyAllowed = allowed);
+      }
       if (allowed && mounted) {
         if (widget.onSessionAuthorized case final activate?) {
           unawaited(
@@ -248,6 +344,9 @@ class _SessionPageState extends State<_SessionPage> {
         message: allowed ? 'Tài khoản đã được cấp quyền truy cập dữ liệu.' : 'Tài khoản đang chờ quyền truy cập dữ liệu. Liên hệ nhóm trưởng để cấp quyền, rồi kiểm tra lại.',
       );
     } catch (error) {
+      if (mounted) {
+        setState(() => _privacyAllowed = false);
+      }
       return (allowed: false, message: authErrorMessage(error));
     }
   }
@@ -327,8 +426,27 @@ class _SessionPageState extends State<_SessionPage> {
                   ),
                   if (_signOutError case final error?)
                     Semantics(liveRegion: true, child: Text(error)),
+                  if (widget.privacyServiceBuilder != null) ...[
+                    const SizedBox(height: 24),
+                    OutlinedButton(
+                      onPressed: _privacyBusy || !_privacyAllowed
+                          ? null
+                          : _exportData,
+                      child: Text(
+                        _privacyBusy ? 'Đang xử lý…' : 'Xuất dữ liệu của tôi',
+                      ),
+                    ),
+                    OutlinedButton(
+                      onPressed: _privacyBusy || !_privacyAllowed
+                          ? null
+                          : _deleteData,
+                      child: const Text('Xóa tài khoản và dữ liệu'),
+                    ),
+                    if (_privacyMessage case final message?)
+                      Semantics(liveRegion: true, child: Text(message)),
+                  ],
                   FilledButton(
-                    onPressed: _signingOut ? null : _signOut,
+                    onPressed: _signingOut || _privacyBusy ? null : _signOut,
                     child: Text(_signingOut ? 'Đang đăng xuất…' : 'Đăng xuất'),
                   ),
                 ],

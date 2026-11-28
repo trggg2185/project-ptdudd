@@ -189,6 +189,26 @@ Kết quả kiểm tra issue #1 gồm 8 test Flutter, `flutter analyze`, build W
 
 Khi nhận issue #7/#9, Hà và Trưởng kiểm tra quyền truy cập chéo A/B/C trên bảng và bucket nghiệp vụ thật.
 
+## 4.5. Kiểm thử quyền riêng tư và xóa dữ liệu (Issue #9)
+
+Migration `20261128000008_privacy_export_and_delete.sql` bổ sung hai RPC:
+
+- `export_my_data()` trả dữ liệu cloud thuộc UID đăng nhập; app sao chép JSON ra clipboard.
+- `delete_my_data()` xóa ảnh riêng tư trong bucket `meal-images` và dữ liệu có `owner_uid` của UID hiện tại.
+
+Luồng kiểm thử:
+
+1. Chạy `flutter test test/core/local_database_test.dart test/auth_flow_test.dart test/firebase_access_token_test.dart`.
+2. Dùng ba tài khoản Firebase thử A, B và C có claim `authenticated`.
+3. Tạo dữ liệu và ảnh cho A/B; thử C truy cập ID hoặc storage path của A/B. Mọi truy cập chéo phải bị RLS/Storage policy chặn.
+4. Đăng xuất và đổi A sang B, xác nhận trang dữ liệu cũ biến mất, queue/cache cục bộ không thuộc B được đọc và không tiếp tục GPS khi ứng dụng quay lại.
+5. Thu hồi quyền camera/GPS trên Android, xác nhận app không thu ngầm và vẫn cho nhập thủ công.
+6. Chọn **Xuất dữ liệu của tôi** rồi xác nhận JSON chỉ chứa UID và dữ liệu của tài khoản đang đăng nhập.
+7. Tắt mạng và chọn xóa dữ liệu: app phải báo không thể xác nhận cloud, không báo đã xóa thành công.
+8. Khi có mạng, xác nhận dialog, dữ liệu cloud/local, ảnh và device token thuộc tài khoản không còn; đăng nhập lại gần đây nếu Firebase yêu cầu xác thực mới trước khi xóa tài khoản.
+
+Không lưu tọa độ, ảnh hoặc dữ liệu sức khỏe thật trong test, log, issue hoặc repository. Kết quả kiểm thử và lỗi còn tồn tại phải ghi trong PR issue #9.
+
 ### 5. Quy trình làm một issue và mẫu yêu cầu gửi AI
 
 Từ **gốc repository**, sau khi đồng bộ nhánh nhóm và bảo đảm working tree sạch:

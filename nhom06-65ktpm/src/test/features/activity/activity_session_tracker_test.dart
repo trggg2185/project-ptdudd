@@ -178,6 +178,7 @@ void main() {
       var sessions = await repository.getSessions(ownerUid: 'route-test-user');
       expect(sessions.single.routeSaved, isFalse);
       expect(sessions.single.route, isEmpty);
+      expect(sessions.single.resolvedSource, ActivityInputSource.gps);
       expect(controller.tracker.status, ActivityStatus.idle);
       expect(
         controller.tracker.durationAt(started.add(const Duration(hours: 1))),

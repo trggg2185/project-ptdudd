@@ -133,6 +133,7 @@ class ActivityController extends ChangeNotifier {
       startedAt: startedAt,
       endedAt: effectiveEndedAt,
       route: saveRoute ? List<GpsPoint>.from(tracker.route) : const [],
+      inputSource: ActivityInputSource.gps,
     );
     final saved = await _save(session);
     if (saved && !_disposed) {
@@ -157,6 +158,7 @@ class ActivityController extends ChangeNotifier {
       startedAt: startedAt,
       endedAt: endedAt,
       route: const [],
+      inputSource: ActivityInputSource.manual,
     );
     await _save(session);
   }

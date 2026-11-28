@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../../profile/domain/profile_repository.dart';
@@ -121,15 +122,16 @@ class _PlannerPageState extends State<PlannerPage> {
       PlanWeek(_week.monday, _zone(fresh)),
       fresh,
     );
+    final current = _items;
     final suggestion = await widget.planner.generate(
       calendar: calendar,
-      current: _items,
+      current: current,
       now: widget.now(),
     );
     if (!mounted) return;
     setState(() {
       _calendar = calendar;
-      _draft = suggestion.items;
+      if (!listEquals(current, suggestion.items)) _draft = suggestion.items;
       _notices = suggestion.notices;
     });
   });

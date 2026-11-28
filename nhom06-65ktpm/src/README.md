@@ -81,9 +81,9 @@ Chạy `flutter test test/features/profile` để thử xác thực đầu vào,
 **Issue #3 — Lập lịch tuần.** Từ **Phiên đăng nhập** chọn **Mở lịch tuần**, hoặc dùng nút lịch ở thanh trên cùng của **Hồ sơ và lịch**.
 
 1. Chọn tuần và ngày cần xem. Ca làm, khoảng bận, đi lại, lịch thủ công trong hồ sơ và giờ ngủ mong muốn được giữ chỗ. Lịch lặp dùng múi giờ của ca đã khai báo và bỏ qua ngày ngoại lệ.
-2. Chọn **Tạo lịch nháp** để xếp các gợi ý vào khoảng trống. Mỗi ngày có tối đa một buổi tập tự động và mỗi buổi giữ thời lượng từ danh mục. App báo số buổi hoặc bữa chưa xếp được. Khi hồ sơ thiếu dữ kiện, dùng **Thêm hoạt động**. Mục nhập tay được khóa khi thêm.
+2. Chọn **Tạo lịch nháp** để xếp các gợi ý vào khoảng trống. Mỗi ngày có tối đa một buổi tập tự động, xoay vòng giữa các bài phù hợp và giữ thời lượng từ danh mục. App báo số buổi hoặc bữa chưa xếp được. Khi hồ sơ thiếu dữ kiện, dùng **Thêm hoạt động**. Mục nhập tay được khóa khi thêm.
 3. Dùng **Chỉnh lịch**, **Đổi giờ**, **Khóa mục** hoặc **Mở khóa** rồi chọn **Duyệt lịch**. App tải lại hồ sơ để kiểm tra xung đột trước khi duyệt. Bản nháp chỉ nằm trong phiên chỉnh sửa. Danh sách để nhắc lấy các mục sắp đến từ lịch đã duyệt. Issue #6 phụ trách gửi thông báo.
-4. Khi hoạt động tới giờ, chọn **Ghi nhật ký** để mở màn hình tương ứng. Quay lại lịch để ghi **Hoàn thành** hoặc **Bỏ qua**. **Tổng kết tuần** hiển thị kết quả do người dùng ghi, các mục sắp đến và các mục chưa ghi nhận. Lịch đã ghi kết quả được giữ khi duyệt lần sau.
+4. Khi hoạt động tới giờ, chọn **Ghi nhật ký** để mở màn hình tương ứng. Quay lại lịch để ghi **Hoàn thành** hoặc **Bỏ qua**. Sau khi bỏ qua, phần thời gian còn lại có thể dùng cho hoạt động khác. **Tổng kết tuần** hiển thị kết quả do người dùng ghi, các mục sắp đến và các mục chưa ghi nhận. Lịch đã ghi kết quả được giữ khi duyệt lần sau.
 
 Chạy `flutter test --no-pub test/features/planner test/auth_flow_test.dart` để kiểm thử luồng trên. Khi triển khai, áp dụng [migration lịch tuần](supabase/migrations/20261127000006_weekly_planner.sql) để bật lưu bản đã duyệt và ghi kết quả trên Supabase. Migration bổ sung hai RPC ghi nguyên tử, kiểm tra phiên bản và dùng RLS hiện có.
 
@@ -150,7 +150,7 @@ Khi cấp quyền thử, kiểm tra Firebase Project ID và UID của tài kho�
    4. [Giới hạn dung lượng và MIME của ảnh bữa ăn](supabase/migrations/20261125000004_meal_images_bucket_limits.sql)
    5. [Ràng buộc nhật ký ngủ và RPC khoảng ngủ mong muốn](supabase/migrations/20261125000005_sleep_constraints_and_window_merge.sql)
    6. [Duyệt lịch tuần và lưu kết quả](supabase/migrations/20261127000006_weekly_planner.sql)
-   4. [Seed 10 môn tập và 10 món ăn](supabase/seed/20261121_initial_catalog.sql)
+   7. [Seed 10 môn tập và 10 món ăn](supabase/seed/20261121_initial_catalog.sql)
 4. Xác nhận bucket `meal-images` ở chế độ riêng tư. Dùng hai tài khoản thử để tạo và check-in thói quen, rồi kiểm tra mỗi tài khoản chỉ thấy dữ liệu của mình. Nếu nhóm đã quản lý migrations bằng Supabase CLI, dùng lịch sử migration của nhóm để áp dụng các file còn thiếu.
 
 Kiểm tra trạng thái schema trước hoặc sau khi áp dụng bằng truy vấn chỉ đọc trong SQL Editor.

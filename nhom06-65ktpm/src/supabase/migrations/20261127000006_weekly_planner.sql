@@ -125,6 +125,7 @@ begin
       and reserved_plan.status = 'approved'
     where a.owner_uid = v_owner and a.plan_id = v_plan.id
       and a.status = 'approved' and a.start_at > v_now
+      and b.status <> 'skipped'
       and a.start_at < coalesce(b.end_at, b.start_at + interval '1 minute')
       and b.start_at < a.end_at
   ) then

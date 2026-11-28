@@ -137,6 +137,114 @@ void main() {
     expect(draft.notices, anyElement(contains('0/3 buổi tập')));
   });
 
+  test('suggestions at the opening of a window start in the future', () async {
+    final week = PlanWeek(monday, zone);
+    final calendar = PlannerCalendar(week, (profile: profile(), blocks: []));
+
+    for (final (minute, kind) in [
+      (0, PlanItemKind.exercise),
+      (360, PlanItemKind.meal),
+    ]) {
+      final now = week.at(monday, minute);
+      final draft = await planner.generate(
+        calendar: calendar,
+        current: [],
+        now: now,
+      );
+
+      expect(draft.items.where((item) => item.hasStarted(now)), isEmpty);
+      final start = draft.items.firstWhere((item) => item.kind == kind).startsAt;
+      expect(start.difference(now), const Duration(minutes: 1));
+    }
+  });
+
+  test('a skipped item preserves history and releases its remaining time', () async {
+    final week = PlanWeek(monday, zone);
+    final calendar = PlannerCalendar(week, (profile: profile(), blocks: []));
+    final skipped = PlanItem(
+      id: 'skipped',
+      kind: PlanItemKind.manual,
+      title: 'Đã bỏ qua',
+      startsAt: week.at(monday, 350),
+      endsAt: week.at(monday, 450),
+      status: PlanItemStatus.skipped,
+      isLocked: true,
+    );
+    final draft = await planner.generate(
+      calendar: calendar,
+      current: [skipped],
+      now: week.at(monday, 355),
+    );
+
+    expect(draft.items, contains(same(skipped)));
+    final breakfast = draft.items.firstWhere(
+      (item) => item.mealType == 'breakfast',
+    );
+    expect(breakfast.startsAt, week.at(monday, 360));
+    expect(calendar.conflictFor(breakfast, draft.items), isNull);
+    final completed = workout(
+      week,
+      'Đã hoàn thành',
+      0,
+      360,
+      PlanItemStatus.completed,
+    );
+    expect(
+      calendar.conflictFor(breakfast, [completed]),
+      contains(completed.title),
+    );
+  });
+
+  test('rotates suitable workouts through the week', () async {
+    final week = PlanWeek(monday, zone);
+    final userProfile = profile();
+    final exercises = await planner.recommendations.getExerciseRecommendations(
+      profile: userProfile.toRecommendationProfile(),
+    );
+    final draft = await planner.generate(
+      calendar: PlannerCalendar(week, (profile: userProfile, blocks: [])),
+      current: [],
+      now: week.interval.start,
+    );
+    final workouts = draft.items.where(
+      (item) => item.kind == PlanItemKind.exercise,
+    );
+
+    expect(exercises.recommendations, hasLength(3));
+    expect(
+      workouts.map((item) => item.title),
+      exercises.recommendations.map((exercise) => exercise.item.name),
+    );
+    expect(
+      workouts.map((item) => item.endsAt.difference(item.startsAt).inMinutes),
+      exercises.recommendations.map((exercise) => exercise.item.durationMinutes),
+    );
+  });
+
+  test('tries a shorter workout when the rotated choice cannot fit', () async {
+    final week = PlanWeek(monday, zone);
+    final shortDay = ScheduleBlock(
+      id: 'busy-tuesday',
+      kind: ScheduleKind.busy,
+      title: 'Lịch bận thứ Ba',
+      timeZone: zone,
+      startsAt: week.at(week.day(1), 12),
+      endsAt: week.dayInterval(1).end,
+    );
+    final draft = await planner.generate(
+      calendar: PlannerCalendar(week, (profile: profile(), blocks: [shortDay])),
+      current: [],
+      now: week.interval.start,
+    );
+    final tuesday = draft.items.singleWhere(
+      (item) =>
+          item.kind == PlanItemKind.exercise &&
+          intervalsOverlap(item.interval, week.dayInterval(1)),
+    );
+    expect(tuesday.startsAt, week.dayInterval(1).start);
+    expect(tuesday.endsAt.difference(tuesday.startsAt).inMinutes, 10);
+  });
+
   test('regenerating after a shift change preserves history and locks without catch-up workouts', () async {
     final week = PlanWeek(monday, zone);
     final now = week.at(week.day(2), 600);

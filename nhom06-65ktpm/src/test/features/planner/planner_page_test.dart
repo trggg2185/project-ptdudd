@@ -11,6 +11,38 @@ import 'package:healthylife/features/recommendations/data/repositories/fixture_c
 import 'package:healthylife/features/recommendations/domain/usecases/get_recommendations_usecase.dart';
 
 void main() {
+  testWidgets('blocked suggestions keep week navigation and reload available', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlannerPage(
+          profileRepository: _ProfileRepository(),
+          repository: _PlanRepository(),
+          planner: const WeeklyPlanner(
+            GetRecommendationsUseCase(repository: FixtureCatalogRepository()),
+          ),
+          profilePageBuilder: (_) => const SizedBox.shrink(),
+          journalPageBuilder: (_) => const SizedBox.shrink(),
+          now: () => DateTime.utc(2026, 12, 7, 9),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tạo lịch nháp'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bạn vẫn có thể thêm hoạt động thủ công.'), findsOneWidget);
+    expect(find.text('Tải lại'), findsOneWidget);
+    expect(find.text('Hủy bản nháp'), findsNothing);
+    await tester.tap(find.byTooltip('Tuần trước'));
+    await tester.pumpAndSettle();
+    expect(find.text('2026-11-30 – 2026-12-06'), findsOneWidget);
+    await tester.tap(find.byTooltip('Tuần sau'));
+    await tester.pumpAndSettle();
+    expect(find.text('2026-12-07 – 2026-12-13'), findsOneWidget);
+  });
+
   testWidgets(
     'a manually planned item needs approval before journaling and reaches the weekly summary',
     (tester) async {

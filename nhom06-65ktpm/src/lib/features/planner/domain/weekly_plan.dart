@@ -87,6 +87,8 @@ class PlanItem {
   bool get recorded =>
       status == PlanItemStatus.completed || status == PlanItemStatus.skipped;
 
+  bool get reservesTime => status != PlanItemStatus.skipped;
+
   bool hasStarted(DateTime now) => !startsAt.isAfter(now);
 
   PlanItem withLock(bool locked) => PlanItem(

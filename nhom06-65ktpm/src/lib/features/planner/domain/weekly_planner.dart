@@ -64,6 +64,7 @@ class PlannerCalendar {
     }
     for (final other in items) {
       if (other.id != item.id &&
+          other.reservesTime &&
           intervalsOverlap(item.interval, other.interval)) {
         return 'Trùng với ${other.title}.';
       }
@@ -114,6 +115,7 @@ class WeeklyPlanner {
     final exercises = await recommendations.getExerciseRecommendations(
       profile: recommendationProfile,
     );
+    final exerciseOptions = exercises.recommendations;
     final mealResults = await Future.wait([
       for (final window in _mealWindows)
         recommendations.getMealRecommendations(
@@ -184,7 +186,9 @@ class WeeklyPlanner {
           )) {
         continue;
       }
-      for (final exercise in exercises.recommendations) {
+      for (var offset = 0; offset < exerciseOptions.length; offset++) {
+        final exercise =
+            exerciseOptions[(workoutCount + offset) % exerciseOptions.length];
         final duration = Duration(minutes: exercise.item.durationMinutes);
         if (duration <= Duration.zero) continue;
         final start = _freeStart(calendar, items, day, duration, now);
@@ -238,9 +242,10 @@ class WeeklyPlanner {
   ) {
     final blocked = [
       ...calendar.reservations.map((reservation) => reservation.interval),
-      ...items.map((item) => item.interval),
+      for (final item in items)
+        if (item.reservesTime) item.interval,
     ]..sort((a, b) => a.start.compareTo(b.start));
-    var start = window.start.isBefore(now)
+    var start = !window.start.isAfter(now)
         ? DateTime.fromMillisecondsSinceEpoch(
             ((now.millisecondsSinceEpoch ~/ 60000) + 1) * 60000,
             isUtc: true,

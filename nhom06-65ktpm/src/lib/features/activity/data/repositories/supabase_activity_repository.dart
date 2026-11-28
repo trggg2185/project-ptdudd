@@ -40,7 +40,12 @@ class SupabaseActivityRepository implements ActivityRepository {
       'started_at': session.startedAt.toUtc().toIso8601String(),
       'ended_at': session.endedAt.toUtc().toIso8601String(),
       'duration_seconds': session.durationSeconds,
-      'estimated_distance_meters': session.estimatedDistanceMeters,
+      // Phiên GPS giữ số đo >= 0 (kể cả 0 m khi không di chuyển / không lưu tuyến);
+      // phiên nhập tay để null để phân biệt chính xác nguồn thiết bị và nhập tay.
+      'estimated_distance_meters':
+          session.resolvedSource == ActivityInputSource.gps
+          ? session.estimatedDistanceMeters
+          : null,
       'feeling': session.feeling,
       'route_saved': false,
     });
@@ -104,19 +109,24 @@ class SupabaseActivityRepository implements ActivityRepository {
             )
             .toList();
       }
+      final rawDistance = row['estimated_distance_meters'] as num?;
+      final isGpsSession =
+          rawDistance != null || routeSaved || route.isNotEmpty;
       sessions.add(
         ActivitySession(
           id: row['id'] as String,
           ownerUid: ownerUid,
           activityName: row['activity_name'] as String,
           durationSeconds: (row['duration_seconds'] as num?)?.toInt() ?? 0,
-          estimatedDistanceMeters:
-              (row['estimated_distance_meters'] as num?)?.toDouble() ?? 0,
+          estimatedDistanceMeters: rawDistance?.toDouble() ?? 0,
           feeling: row['feeling'] as String? ?? '',
           routeSaved: routeSaved,
           startedAt: DateTime.parse(row['started_at'] as String),
           endedAt: DateTime.parse(row['ended_at'] as String),
           route: route,
+          inputSource: isGpsSession
+              ? ActivityInputSource.gps
+              : ActivityInputSource.manual,
         ),
       );
     }

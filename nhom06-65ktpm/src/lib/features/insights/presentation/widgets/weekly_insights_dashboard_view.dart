@@ -343,7 +343,7 @@ class _WeeklyInsightsDashboardViewState
             const SizedBox(height: 4),
             Text(
               activity.hasData
-                  ? '${activity.sessionCount} buổi tập • ${InsightsDisplayFormatter.formatEstimatedDistance(activity.totalEstimatedDistanceMeters)}'
+                  ? '${activity.sessionCount} buổi tập • ${InsightsDisplayFormatter.formatEstimatedDistance(activity.totalEstimatedDistanceMeters, hasGpsSession: activity.gpsSessionCount > 0)}'
                   : 'Tuần này chưa có buổi tập được ghi nhận.',
               style: textTheme.bodyMedium,
             ),

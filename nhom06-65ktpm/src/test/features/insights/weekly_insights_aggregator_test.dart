@@ -1,6 +1,11 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:healthylife/features/activity/data/repositories/in_memory_activity_repository.dart';
+import 'package:healthylife/features/activity/data/repositories/supabase_activity_repository.dart';
 import 'package:healthylife/features/activity/domain/entities/activity_session.dart';
+import 'package:healthylife/features/activity/presentation/controllers/activity_controller.dart';
 import 'package:healthylife/features/habits/data/repositories/in_memory_habit_repository.dart';
 import 'package:healthylife/features/habits/domain/entities/habit.dart';
 import 'package:healthylife/features/habits/domain/entities/habit_frequency.dart';
@@ -9,6 +14,7 @@ import 'package:healthylife/features/insights/data/fixtures/sample_weekly_insigh
 import 'package:healthylife/features/insights/data/repositories/composite_weekly_insights_source.dart';
 import 'package:healthylife/features/insights/domain/entities/insight_data_source.dart';
 import 'package:healthylife/features/insights/domain/entities/weekly_insights_summary.dart';
+import 'package:healthylife/features/insights/domain/services/insights_display_formatter.dart';
 import 'package:healthylife/features/insights/domain/services/weekly_insights_aggregator.dart';
 import 'package:healthylife/features/insights/domain/usecases/get_weekly_insights_usecase.dart';
 import 'package:healthylife/features/nutrition/data/repositories/in_memory_meal_log_repository.dart';
@@ -16,6 +22,7 @@ import 'package:healthylife/features/nutrition/domain/entities/meal_log.dart';
 import 'package:healthylife/features/sleep/data/repositories/in_memory_sleep_repository.dart';
 import 'package:healthylife/features/sleep/domain/entities/sleep_log.dart';
 import 'package:healthylife/features/sleep/domain/entities/sleep_window.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   const aggregator = WeeklyInsightsAggregator();
@@ -447,6 +454,161 @@ void main() {
       expect(summary.activity.totalDurationSeconds, 2700);
       expect(summary.activity.formattedTotalDuration, '45 phút');
       expect(summary.meals.totalLogsCount, 1);
+    });
+
+    test('phiên GPS 0 m không lưu tuyến vẫn được tính là nguồn thiết bị GPS, không gộp vào nhập tay', () async {
+      const ownerUid = 'uid-gps-zero';
+      final activityRepo = InMemoryActivityRepository();
+      final controller = ActivityController(
+        repository: activityRepo,
+        ownerUid: ownerUid,
+      );
+      addTearDown(controller.dispose);
+
+      // 1. Lưu phiên GPS 0 m, không bật lưu tuyến đường (routeSaved == false, route == [])
+      final gpsStart = DateTime(2026, 11, 24, 7, 0);
+      final gpsEnd = gpsStart.add(const Duration(minutes: 15));
+      controller.startGps(gpsStart);
+      controller.stopGps(gpsEnd);
+      await controller.saveGpsSession(gpsEnd);
+
+      final gpsOnlySummary = aggregator.aggregate(
+        ownerUid: ownerUid,
+        habits: const [],
+        habitLogs: const [],
+        activitySessions: await activityRepo.getSessions(ownerUid: ownerUid),
+        sleepLogs: const [],
+        referenceDate: DateTime(2026, 11, 24),
+      );
+
+      expect(gpsOnlySummary.activity.sessionCount, 1);
+      expect(gpsOnlySummary.activity.gpsSessionCount, 1);
+      expect(gpsOnlySummary.activity.manualSessionCount, 0);
+      expect(gpsOnlySummary.activity.totalEstimatedDistanceMeters, 0);
+      expect(
+        gpsOnlySummary.activity.dataSources,
+        equals({InsightDataSource.deviceGps}),
+      );
+      expect(
+        InsightsDisplayFormatter.formatEstimatedDistance(
+          gpsOnlySummary.activity.totalEstimatedDistanceMeters,
+          hasGpsSession: gpsOnlySummary.activity.gpsSessionCount > 0,
+        ),
+        '0 m (ước tính GPS)',
+      );
+
+      // 2. Lưu thêm 1 phiên nhập tay -> tách rõ 1 GPS + 1 nhập tay
+      await controller.saveManualSession(
+        durationMinutes: 20,
+        date: DateTime(2026, 11, 24, 18, 0),
+      );
+
+      final combinedSummary = aggregator.aggregate(
+        ownerUid: ownerUid,
+        habits: const [],
+        habitLogs: const [],
+        activitySessions: await activityRepo.getSessions(ownerUid: ownerUid),
+        sleepLogs: const [],
+        referenceDate: DateTime(2026, 11, 24),
+      );
+
+      expect(combinedSummary.activity.sessionCount, 2);
+      expect(combinedSummary.activity.gpsSessionCount, 1);
+      expect(combinedSummary.activity.manualSessionCount, 1);
+      expect(
+        combinedSummary.activity.dataSources,
+        equals({InsightDataSource.deviceGps, InsightDataSource.manualInput}),
+      );
+      expect(
+        InsightsDisplayFormatter.formatEstimatedDistance(
+          0,
+          hasGpsSession: false,
+        ),
+        'Không có quãng đường GPS',
+      );
+    });
+
+    test('SupabaseActivityRepository bảo toàn nguồn phiên GPS 0 m và phiên nhập tay qua HTTP', () async {
+      final storedRows = <Map<String, dynamic>>[];
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+
+      server.listen((request) async {
+        final path = request.uri.path;
+        if (request.method == 'POST' &&
+            path.endsWith('/rest/v1/activity_sessions')) {
+          final body = await utf8.decoder.bind(request).join();
+          final decoded = jsonDecode(body);
+          if (decoded is Map<String, dynamic>) {
+            storedRows.removeWhere((row) => row['id'] == decoded['id']);
+            storedRows.add(decoded);
+          }
+          request.response
+            ..statusCode = HttpStatus.created
+            ..headers.contentType = ContentType.json
+            ..write(jsonEncode(decoded));
+          await request.response.close();
+          return;
+        }
+        if (request.method == 'GET' &&
+            path.endsWith('/rest/v1/activity_sessions')) {
+          request.response
+            ..statusCode = HttpStatus.ok
+            ..headers.contentType = ContentType.json
+            ..write(jsonEncode(storedRows));
+          await request.response.close();
+          return;
+        }
+        request.response
+          ..statusCode = HttpStatus.ok
+          ..headers.contentType = ContentType.json
+          ..write('[]');
+        await request.response.close();
+      });
+
+      final client = SupabaseClient(
+        'http://${server.address.address}:${server.port}',
+        'test-anon-key',
+      );
+      addTearDown(() => client.dispose());
+
+      const ownerUid = 'uid-supabase-gps-zero';
+      final repo = SupabaseActivityRepository(client: client);
+      final controller = ActivityController(
+        repository: repo,
+        ownerUid: ownerUid,
+      );
+      addTearDown(controller.dispose);
+
+      final gpsStart = DateTime(2026, 11, 25, 6, 30);
+      final gpsEnd = gpsStart.add(const Duration(minutes: 10));
+      controller.startGps(gpsStart);
+      controller.stopGps(gpsEnd);
+      await controller.saveGpsSession(gpsEnd);
+      await controller.saveManualSession(
+        durationMinutes: 15,
+        date: DateTime(2026, 11, 25, 19, 0),
+      );
+
+      // Xác nhận payload gửi lên Supabase tách biệt 0 (GPS) và null (nhập tay)
+      expect(storedRows, hasLength(2));
+      expect(storedRows[0]['estimated_distance_meters'], 0);
+      expect(storedRows[1]['estimated_distance_meters'], isNull);
+
+      // Đọc lại từ SupabaseActivityRepository và tổng hợp tuần
+      final reloaded = await repo.getSessions(ownerUid: ownerUid);
+      final summary = aggregator.aggregate(
+        ownerUid: ownerUid,
+        habits: const [],
+        habitLogs: const [],
+        activitySessions: reloaded,
+        sleepLogs: const [],
+        referenceDate: DateTime(2026, 11, 25),
+      );
+
+      expect(summary.activity.sessionCount, 2);
+      expect(summary.activity.gpsSessionCount, 1);
+      expect(summary.activity.manualSessionCount, 1);
     });
   });
 }

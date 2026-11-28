@@ -476,12 +476,9 @@ class WeeklyInsightsAggregator {
   }
 
   static InsightDataSource _resolveActivitySource(ActivitySession session) {
-    if (session.route.isNotEmpty ||
-        session.routeSaved ||
-        session.estimatedDistanceMeters > 0) {
-      return InsightDataSource.deviceGps;
-    }
-    return InsightDataSource.manualInput;
+    return session.resolvedSource == ActivityInputSource.gps
+        ? InsightDataSource.deviceGps
+        : InsightDataSource.manualInput;
   }
 
   WeeklySleepInsights _aggregateSleep({

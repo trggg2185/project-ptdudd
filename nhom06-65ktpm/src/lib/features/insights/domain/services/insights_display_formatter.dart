@@ -89,9 +89,14 @@ class InsightsDisplayFormatter {
     return 'Nguồn: ${parts.join(' • ')}';
   }
 
-  /// Định dạng quãng đường ước tính GPS (chỉ hiển thị khi có buổi GPS > 0m).
-  static String formatEstimatedDistance(double meters) {
-    if (meters <= 0) return 'Không có quãng đường GPS';
+  /// Định dạng quãng đường ước tính GPS (vẫn hiển thị 0 m nếu có phiên GPS 0 m).
+  static String formatEstimatedDistance(
+    double meters, {
+    bool hasGpsSession = false,
+  }) {
+    if (meters <= 0) {
+      return hasGpsSession ? '0 m (ước tính GPS)' : 'Không có quãng đường GPS';
+    }
     if (meters < 1000) {
       return '${meters.round()} m (ước tính GPS)';
     }

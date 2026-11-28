@@ -2,7 +2,7 @@
 
 ## Bắt đầu tại đây — dành cho thành viên và AI của thành viên
 
-**Bản tích hợp issue #1, #2, #3, #4, #5, #7, #8, #10 và #11.** Trên Android/Web, tài khoản Firebase có quyền dữ liệu có thể mở **Hồ sơ và lịch**, **Lịch tuần**, **Thói quen**, **Nhật ký ngủ**, **Nhật ký vận động** và **Nhật ký bữa ăn**. Nhật ký bữa ăn trên Android dùng SQLite và sync worker trong `lib/core/`. Lịch tuần dùng hồ sơ và danh mục gợi ý đã lọc.
+**Bản tích hợp issue #1, #2, #3, #4, #5, #6, #7, #8, #10 và #11.** Trên Android/Web, tài khoản Firebase có quyền dữ liệu có thể mở **Hồ sơ và lịch**, **Lịch tuần**, **Thói quen**, **Nhật ký ngủ**, **Nhật ký vận động**, **Nhật ký bữa ăn** và **Nhắc lịch & giờ yên lặng**. Nhật ký bữa ăn trên Android dùng SQLite và sync worker trong `lib/core/`. Lịch tuần dùng hồ sơ và danh mục gợi ý đã lọc.
 
 AI đọc [AGENTS.md](AGENTS.md) trước khi sửa mã, rồi đọc issue được giao và các phần liên quan trong README. Các mục 1–11 bên dưới là **đặc tả/kế hoạch**, không phải danh sách tính năng đã hoàn thành.
 
@@ -88,6 +88,8 @@ Chạy `flutter test test/features/profile` để thử xác thực đầu vào,
 Chạy `flutter test --no-pub test/features/planner test/auth_flow_test.dart` để kiểm thử luồng trên. Khi triển khai, áp dụng [migration lịch tuần](supabase/migrations/20261127000006_weekly_planner.sql) để bật lưu bản đã duyệt và ghi kết quả trên Supabase. Migration bổ sung hai RPC ghi nguyên tử, kiểm tra phiên bản và dùng RLS hiện có.
 
 **Issue #5 — Nhật ký ngủ.** Chọn **Mở nhật ký ngủ** để nhập giờ ngủ/thức và mức tỉnh táo. Lịch sinh hoạt dùng ca làm và lịch bận từ hồ sơ, kể cả lịch lặp và ngày ngoại lệ. Khoảng ngủ mong muốn được chia sẻ giữa hai màn hình. [Hướng dẫn kiểm thử nhật ký ngủ](lib/features/sleep/README.md).
+
+**Issue #6 — Nhắc lịch cục bộ & Giờ yên lặng.** Chọn **Mở nhắc lịch & giờ yên lặng** để cấu hình bật/tắt nhắc, khung giờ yên lặng (qua đêm lẫn ca đêm ban ngày), múi giờ IANA, tạm hoãn (snooze) và luôn khóa thông báo màn hình khóa ở chế độ riêng tư trung tính. Chỉ mục thuộc lịch đã duyệt (`approved`) mới tạo nhắc; đổi/xóa mục tự hủy nhắc cũ. Lớp điều phối toàn app (`NotificationAccountCoordinator` + `WidgetsBindingObserver` + `firebase_messaging`) tự đăng ký/xoay vòng `device_tokens`, xử lý FCM data-only ở cả **foreground, background và terminated** (`onBackgroundMessage` + chống trùng xuyên isolate qua SQLite), khôi phục nhắc sau khởi động lại máy dù chưa mở trang nhắc lịch và thu hồi token (kèm hàng đợi retry khi offline) khi đăng xuất hoặc đổi tài khoản Firebase. [Hướng dẫn kiểm thử, hợp đồng data-only FCM và giới hạn thiết bị](lib/features/notifications/README.md).
 
 **Issue #11 — Nhật ký bữa ăn.** Chọn **Mở nhật ký bữa ăn** để nhập tên món, đổi món gợi ý và đính kèm ảnh nếu muốn. Android lưu nhật ký và ảnh chờ trong SQLite. Nút **Đồng bộ nhật ký** thử gửi lại khi có kết nối. Web đọc và ghi trực tuyến. [Hướng dẫn kiểm thử nhật ký bữa ăn](lib/features/nutrition/README.md).
 
